@@ -344,7 +344,7 @@ let cube : int -> int =
   and computes the total value in centimes:
 *)
 let centimes_of : int -> int -> int =
-  fun _ -> failwith "centimes_of unimplemented"
+  fun (rp:int) -> fun (fr:int) -> rp + (fr * 100)
 
 
 (* Problem 1-3 *)
