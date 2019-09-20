@@ -5,9 +5,3 @@
 *~
 # build directory
 _build
-_build/
-_build/*
-*build/
-**/_build
-**/_build/
-**/_build/*
