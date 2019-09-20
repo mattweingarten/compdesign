@@ -1,2 +1,5 @@
 # vim swap files
 *.swp
+*.swo
+# vim tmp files
+*~
