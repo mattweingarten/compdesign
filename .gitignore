@@ -3,3 +3,5 @@
 *.swo
 # vim tmp files
 *~
+# build directory
+/_build/*

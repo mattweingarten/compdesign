@@ -93,9 +93,9 @@ let another_int : int = 3 * 14
 
   For example, it is an error to add a float and an int:
 *)
-(* Uncomment to get a type error:
-   let an_error : int = 3 + 1.0
-*)
+(* Uncomment to get a type error:*)
+(*      let an_error : int = 3 + 1.0 *)
+
 
 
 (*
@@ -174,7 +174,7 @@ let sextupled_z  : int = quadrupled_z + (double z)
 *)
 
 let mult : int -> int -> int =
-  fun (x:int) -> fun (y:int) -> x * y
+fun (x:int) -> fun (y:int) -> x * y
 let squared_z : int = mult z z   (* multiply z times z *)
 
 (*
@@ -328,11 +328,11 @@ let quadrupled_z_again : int = twice double z  (* pass double to twice *)
   makes the first case of part1_tests "Problem 1" succeed. See the
   gradedtests.ml file.
 *)
-let pieces : int = -1
+let pieces : int = 8
 
 (* Implement a function cube that takes an int value and produces its cube. *)
 let cube : int -> int =
-	fun _ -> failwith "cube unimplemented"
+        fun (x:int) -> x*x*x
 
 
 (* Problem 1-2 *)

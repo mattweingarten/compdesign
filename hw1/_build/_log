@@ -1,18 +1,18 @@
 ### Starting build.
 # Target: main.ml.depends, tags: { extension:ml, file:main.ml, ocaml, ocamldep, quiet }
-ocamldep.opt -modules main.ml > main.ml.depends
+ocamldep.opt -modules main.ml > main.ml.depends # cached
 # Target: util/assert.ml.depends, tags: { extension:ml, file:util/assert.ml, ocaml, ocamldep, quiet }
-ocamldep.opt -modules util/assert.ml > util/assert.ml.depends
-# Target: gradedtests.ml.depends, tags: { extension:ml, file:gradedtests.ml, ocaml, ocamldep, quiet }
-ocamldep.opt -modules gradedtests.ml > gradedtests.ml.depends
+ocamldep.opt -modules util/assert.ml > util/assert.ml.depends # cached
 # Target: util/assert.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:util/assert.cmo, file:util/assert.ml, implem, ocaml, quiet }
-ocamlc.opt -c -I util -o util/assert.cmo util/assert.ml
+ocamlc.opt -c -I util -o util/assert.cmo util/assert.ml # cached
+# Target: gradedtests.ml.depends, tags: { extension:ml, file:gradedtests.ml, ocaml, ocamldep, quiet }
+ocamldep.opt -modules gradedtests.ml > gradedtests.ml.depends # cached
 # Target: hellocaml.ml.depends, tags: { extension:ml, file:hellocaml.ml, ocaml, ocamldep, quiet }
 ocamldep.opt -modules hellocaml.ml > hellocaml.ml.depends
 # Target: hellocaml.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:hellocaml.cmo, file:hellocaml.ml, implem, ocaml, quiet }
 ocamlc.opt -c -I util -o hellocaml.cmo hellocaml.ml
 # Target: providedtests.ml.depends, tags: { extension:ml, file:providedtests.ml, ocaml, ocamldep, quiet }
-ocamldep.opt -modules providedtests.ml > providedtests.ml.depends
+ocamldep.opt -modules providedtests.ml > providedtests.ml.depends # cached
 # Target: gradedtests.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:gradedtests.cmo, file:gradedtests.ml, implem, ocaml, quiet }
 ocamlc.opt -c -I util -o gradedtests.cmo gradedtests.ml
 # Target: providedtests.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:providedtests.cmo, file:providedtests.ml, implem, ocaml, quiet }
@@ -20,7 +20,7 @@ ocamlc.opt -c -I util -o providedtests.cmo providedtests.ml
 # Target: main.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:main.cmo, file:main.ml, implem, ocaml, quiet }
 ocamlc.opt -c -I util -o main.cmo main.ml
 # Target: util/assert.cmx, tags: { compile, extension:cmx, extension:ml, file:util/assert.cmx, file:util/assert.ml, implem, native, ocaml, quiet }
-ocamlopt.opt -c -I util -o util/assert.cmx util/assert.ml
+ocamlopt.opt -c -I util -o util/assert.cmx util/assert.ml # cached
 # Target: hellocaml.cmx, tags: { compile, extension:cmx, extension:ml, file:hellocaml.cmx, file:hellocaml.ml, implem, native, ocaml, quiet }
 ocamlopt.opt -c -I util -o hellocaml.cmx hellocaml.ml
 # Target: gradedtests.cmx, tags: { compile, extension:cmx, extension:ml, file:gradedtests.cmx, file:gradedtests.ml, implem, native, ocaml, quiet }
