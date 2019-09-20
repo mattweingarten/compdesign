@@ -1,1 +1,0 @@
-providedtests.ml: Assert Hellocaml
