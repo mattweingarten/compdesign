@@ -500,9 +500,11 @@ let pair_up (x:'a) : ('a * 'a) = (x, x)
   Complete the definition of third_of_three; be sure to give it
   the correct type signature (we will grade that part manually):
 *)
-let third_of_three _ = failwith
-  "third_of_three unimplemented"
-
+let third_of_three (t:'a * 'b * 'c) : 'c = 
+  begin match t with
+    | (_, _, x) -> x
+  end
+          
 
 (*
   Problem 2-2
