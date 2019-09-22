@@ -516,9 +516,7 @@ let third_of_three (t:'a * 'b * 'c) : 'c =
 *)
 
 let compose_pair (p:(('b -> 'c) * ('a -> 'b))) : 'a -> 'c =
-  failwith "compose_pair unimplemented"
-
-
+  fun i -> fst p (snd p i)
 
 
 (******************************************************************************)
