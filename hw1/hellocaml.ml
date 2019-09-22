@@ -760,7 +760,12 @@ let rev_t (l: 'a list) : 'a list =
   evaluates to true or false.
 *)
 let rec insert (x:'a) (l:'a list) : 'a list =
-  failwith "insert unimplemented"
+  begin match l with
+    | [] -> [x]
+    | h::ts -> if h < x then h::(insert x ts)
+      else if h = x then l
+      else x::h::ts
+  end
 
 
 (*
