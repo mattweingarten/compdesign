@@ -722,7 +722,10 @@ let rec append (l1:'a list) (l2:'a list) : 'a list =
   you might want to call append.  Do not use the library function.
 *)
 let rec rev (l:'a list) : 'a list =
-  failwith "rev unimplemented"
+  begin match l with
+    | [] -> []
+    | x::xs -> append (rev xs) [x]
+  end
 
 (*
   Problem 3-4
