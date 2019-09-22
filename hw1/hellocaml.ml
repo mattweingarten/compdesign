@@ -688,7 +688,10 @@ let rec mylist_to_list (l:'a mylist) : 'a list =
   the inverse of the mylist_to_list function given above.
 *)
 let rec list_to_mylist (l:'a list) : 'a mylist =
-  failwith "list_to_mylist unimplemented"
+  begin match l with
+    | [] -> Nil
+    | x::xs -> Cons(x, list_to_mylist(xs))
+  end
 
 
 (*
