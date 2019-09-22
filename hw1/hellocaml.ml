@@ -708,7 +708,12 @@ let rec list_to_mylist (l:'a list) : 'a mylist =
   append.  So (List.append [1;2] [3]) is the same as  ([1;2] @ [3]).
 *)
 let rec append (l1:'a list) (l2:'a list) : 'a list =
-  failwith "append unimplemented"
+  begin match l1, l2 with
+    | [], [] -> []
+    | [], ys -> ys
+    | xs, [] -> xs
+    | x::xs, ys -> x::append xs ys
+  end
 
 (*
   Problem 3-3
