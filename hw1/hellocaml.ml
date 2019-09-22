@@ -724,7 +724,7 @@ let rec append (l1:'a list) (l2:'a list) : 'a list =
 let rec rev (l:'a list) : 'a list =
   begin match l with
     | [] -> []
-    | x::xs -> append (rev xs) [x]
+    | x::xs -> append (rev xs) [x] (* append recursion of tail w/ first element *)
   end
 
 (*
@@ -737,7 +737,13 @@ let rec rev (l:'a list) : 'a list =
   OCaml will compile a tail recursive function to a simple loop.
 *)
 let rev_t (l: 'a list) : 'a list =
-  failwith "rev_t unimplemented"
+  let rec loop acc l'  = 
+    begin match l' with
+      | [] -> acc
+      | x::xs -> loop (x::acc) xs
+    end
+  in
+    loop [] l
 
 
 (*
