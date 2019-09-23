@@ -871,7 +871,13 @@ let e3 : exp = Mult(Var "y", Mult(e2, Neg e2))     (* "y * ((x+1) * -(x+1))" *)
   Hint: you probably want to use the 'union' function you wrote for Problem 3-5.
 *)
 let rec vars_of (e:exp) : string list =
-  failwith "vars_of unimplemented"
+  begin match e with
+    | Var x -> [x]
+    | Const x -> []
+    | Add (e1, e2) -> union (vars_of e1) (vars_of e2)
+    | Mult (e1, e2) -> union (vars_of e1) (vars_of e2)
+    | Neg e -> vars_of e
+  end
 
 
 (*
