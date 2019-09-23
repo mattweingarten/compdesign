@@ -896,7 +896,13 @@ let rec vars_of (e:exp) : string list =
 *)
 
 let rec string_of (e:exp) : string =
-  failwith "string_of unimplemented"
+  begin match e with
+    | Var x -> x
+    | Const x -> Int64.to_string x
+    | Add (e1, e2) -> "(" ^ (string_of e1) ^ " + " ^ (string_of e2) ^ ")"
+    | Mult (e1, e2) -> "(" ^ (string_of e1) ^ " * " ^ (string_of e2) ^ ")"
+    | Neg e -> "-(" ^ (string_of e) ^ ")"
+  end
 
 (*
   How should we _interpret_ (i.e. give meaning to) an expression?
