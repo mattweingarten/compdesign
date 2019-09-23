@@ -963,7 +963,11 @@ let ctxt2 : ctxt = [("x", 2L); ("y", 7L)]  (* maps "x" to 2L, "y" to 7L *)
   such value, it should raise the Not_found exception.
 *)
 let rec lookup (x:string) (c:ctxt) : int64 =
-  failwith "unimplemented"
+  begin match x, c with
+    | _, [] -> raise Not_found
+    | x, (k, v)::ys -> if x = k then v
+      else lookup x ys
+  end
 
 
 (*
