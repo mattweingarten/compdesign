@@ -1045,8 +1045,33 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
   Hint: what simple optimizations can you do with Neg?
 *)
 
-let rec optimize (e:exp) : exp =
-  failwith "optimize unimplemented"
+let rec optimize (e:exp) : exp =  
+  begin match e with
+    | Const _ | Var _ -> e                                    (* no optimization possible *)
+    | Neg e' -> 
+      begin match e' with     
+        | Neg e'' -> optimize e''                             (* negation of negation eliminates itself *)
+        | Const x ->                                          (* 0 = -0 *)
+          if x = 0L   then Const 0L 
+          else        Const (Int64.neg x)                     (* negated const *)
+        | _ -> optimize (Neg (optimize e'))                   (* optimize inner expression *)
+      end
+    | Mult (e1, e2) -> 
+      begin match e1, e2 with
+        | Const 1L, _ -> optimize e2                          (* mult by 1 *)
+        | _, Const 1L -> optimize e1
+        | Const 0L, _ | _, Const 0L -> Const 0L               (* mult by 0 *)
+        | Const x, Const y -> Const (Int64.mul x y)           (* mult consts together *)
+        | _, _ -> optimize (Mult (optimize e1, optimize e2))  (* recursive opt *)
+      end
+    | Add (e1, e2) ->
+      begin match e1, e2 with
+        | Const 0L, _ -> optimize e2                          (* add 0 *)
+        | _, Const 0L -> optimize e1
+        | Const x, Const y -> Const (Int64.add x y)           (* add consts together *)
+        | _, _ -> optimize (Add (optimize e1, optimize e2))   (* recursive opt *)
+      end
+  end
 
 
 (******************************************************************************)
