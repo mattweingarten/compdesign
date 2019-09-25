@@ -1215,7 +1215,13 @@ let ans1 = run [] p1
    - You should test the correctness of your compiler on several examples.
 *)
 let rec compile (e:exp) : program =
-  failwith "compile unimplemented"
+  begin match e with
+    | Const x -> [IPushC x]
+    | Var x -> [IPushV x]
+    | Add (e1, e2) -> append (append (compile e1) (compile e2)) [IAdd]
+    | Mult (e1, e2) -> append (append (compile e1) (compile e2)) [IMul]
+    | Neg e -> append (compile e) [INeg]
+  end
 
 
 
