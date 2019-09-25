@@ -27,4 +27,13 @@ let provided_tests : suite = [
     ("case3", assert_eqf (fun () -> optimize (Mult (Const 1L, Var "x"))) (Var "x"));
     ("case4", assert_eqf (fun () -> optimize (Mult ((Add ((Neg (Neg (Const 1L))), (Neg (Const 1L)))), (Var "x")))) (Const 0L));
   ]);
+
+  Test ("Provided Test For Problem 5", [
+    ("case1", assert_eqf (fun () -> compile e1) p1);
+    ("case2", assert_eqf (fun () -> (run ctxt1 (compile e1))) 6L);
+    ("case3", assert_eqf (fun () -> (run ctxt1 (compile e2))) 4L);
+    ("case4", assert_eqf (fun () -> (run [("x", 1L); ("y", 2L); ("x", 5L)] (compile (Mult (Mult (Var "x", Var "x"), Mult(Var "x", Var "x")))))) 1L);
+    ("case5", assert_eqf (fun () -> (run ctxt2 (compile (Mult (Add (Var "x", Var "y"), Add (Const 10L, Const 1L)))))) 99L);
+    ("case6", assert_eqf (fun () -> (run ctxt1 (compile (Mult ((Add ((Neg (Neg (Const 1L))), (Neg (Const 1L)))), (Var "x")))))) 0L);
+  ])
 ]
