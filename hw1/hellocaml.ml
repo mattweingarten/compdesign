@@ -500,11 +500,11 @@ let pair_up (x:'a) : ('a * 'a) = (x, x)
   Complete the definition of third_of_three; be sure to give it
   the correct type signature (we will grade that part manually):
 *)
-let third_of_three (t:'a * 'b * 'c) : 'c = 
+let third_of_three (t:'a * 'b * 'c) : 'c =
   begin match t with
     | (_, _, x) -> x
   end
-          
+
 
 (*
   Problem 2-2
@@ -737,7 +737,7 @@ let rec rev (l:'a list) : 'a list =
   OCaml will compile a tail recursive function to a simple loop.
 *)
 let rev_t (l: 'a list) : 'a list =
-  let rec loop acc l'  = 
+  let rec loop acc l'  =
     begin match l' with
       | [] -> acc
       | x::xs -> loop (x::acc) xs
@@ -1048,33 +1048,42 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
   Hint: what simple optimizations can you do with Neg?
 *)
 
-let rec optimize (e:exp) : exp =  
+let rec optimize (e:exp) : exp =
   begin match e with
-    | Const _ | Var _ -> e                                    (* leaves, return as is*)
-    | Neg e' -> 
-      begin match e' with     
-        | Neg e'' -> optimize e''                             (* negation of negation eliminates itself *)
-        | Const x ->                                          (* 0 = -0 *)
-          if x = 0L   then Const 0L 
-          else        Const (Int64.neg x)                     (* negated const *)
-        | _ -> optimize (Neg (optimize e'))                   (* opt inner expression and optimize result also*)
-      end
-    | Mult (e1, e2) -> 
-      begin match e1, e2 with
-        | Const 1L, _ -> optimize e2                          (* mult by 1 *)
-        | _, Const 1L -> optimize e1
-        | Const 0L, _ | _, Const 0L -> Const 0L               (* mult by 0 *)
-        | Const x, Const y -> Const (Int64.mul x y)           (* mult consts together *)
-        | _, _ -> optimize (Mult (optimize e1, optimize e2))  (* recursive opt *)
-      end
-    | Add (e1, e2) ->
-      begin match e1, e2 with
-        | Const 0L, _ -> optimize e2                          (* add 0 *)
-        | _, Const 0L -> optimize e1
-        | Const x, Const y -> Const (Int64.add x y)           (* add consts together *)
-        | _, _ -> optimize (Add (optimize e1, optimize e2))   (* recursive opt of inner expression and opt result*)
-      end
-  end
+    | Const _
+    | Var _       -> e                                          (* leaves, return as is*)
+    | Neg x           ->
+      let x' = optimize x in                                    (* optimize inner expression *)
+        begin match x' with
+          | Neg y   -> y                                        (* negation of negation *)
+          | Const y ->                                          (* 0 = -0 *)
+            if y = 0L then Const 0L                             (* negate const *)
+            else      Const (Int64.neg y)                       (* negated const *)
+          | _       -> e                                        (* no other optimization possible, exit *)
+        end
+    | Mult (x, y) ->
+      let (x', y') = ((optimize x), (optimize y)) in            (* optimize inner expressions *)
+        begin match x', y' with
+          | _, Const 1L       -> x'                             (* mult by 1, return first exp *)
+          | Const 1L, _       -> y'                             (* mult by 1, return second exp *)
+          | Const 0L, _
+          | _, Const 0L       -> Const 0L                       (* mult by 0 *)
+          | Const x, Const y  -> Const (Int64.mul x y)          (* mult consts together *)
+          | _, _              -> e                              (* no other optimization possible, exit *)
+        end
+    | Add (x, y)  ->
+      let (x', y') = ((optimize x), (optimize y)) in            (* optimize inner expressions *)
+        begin match x', y' with
+          | _, Const 0L             -> x'                       (* add 0, return first expression *)
+          | Const 0L, _             -> y'                       (* add 0, return second expression *)
+          | Const v1, Const v2      -> Const (Int64.add v1 v2)  (* add consts *)
+          | Var v1, (Neg (Var v2))
+          | (Neg (Var v2)), Var v1  ->
+            if v1 = v2 then Const 0L                            (* x-x, -x+x *)
+            else            e                                   (* x-y, -x+y: can't optimize further *)
+          | _, _                    -> e                        (* no other optimization possible, exit *)
+        end
+    end
 
 
 (******************************************************************************)
@@ -1218,7 +1227,7 @@ let ans1 = run [] p1
    - You should test the correctness of your compiler on several examples.
 *)
 let rec compile (e:exp) : program =
-  let match_op o = 
+  let match_op o =
     begin match o with
       | Const x -> [IPushC x]
       | Var x   -> [IPushV x]
@@ -1230,9 +1239,9 @@ let rec compile (e:exp) : program =
         begin match exp with
           | Add (x, y) | Mult (x, y)  -> (compile x) @ (compile y)
           | Neg x                     -> (compile x)
-          | _                         -> [] 
+          | _                         -> []
       end in
-        (get_stack_head e) @ (match_op e) 
+        (get_stack_head e) @ (match_op e)
 
 
 
