@@ -110,6 +110,32 @@ let provided_tests : suite = [
         )
       )
     )) (Const 0L));
+    ("case6", assert_eqf (fun () -> optimize (
+      Mult (
+        Add (Var "x", Var "x"),
+        Add (
+          Var "x",
+          (
+            Add (
+              Const 1L,
+              (
+                Neg (
+                  Const 1L
+                )
+              )
+            )
+          )
+        )
+      )
+    ))
+    (Mult (Const 3L, Var "x")));
+    ("case7", assert_eqf (fun () -> optimize (
+      Mult (
+        Neg (Var "x"),
+        Neg (Var "x")
+      )
+    ))
+    (Neg (Mult (Var "x", Var "x"))));
     (*("case5", assert_eqf (fun () -> optimize (Add (Var "x", (Neg (Add (Var "x", (Neg (Const 1L)))))))) (Const 0L));*)
   ]);
 

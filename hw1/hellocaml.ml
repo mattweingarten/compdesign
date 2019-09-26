@@ -1050,16 +1050,15 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
 
 let rec optimize (e:exp) : exp =
   begin match e with
-    | Const _
-    | Var _       -> e                                          (* leaves, return as is*)
+    | Const _ | Var _          -> e                             (* leaves, return as is*)
     | Neg x           ->
       let x' = optimize x in                                    (* optimize inner expression *)
         begin match x' with
           | Neg y   -> y                                        (* negation of negation *)
           | Const y ->                                          (* 0 = -0 *)
             if y = 0L then Const 0L                             (* negate const *)
-            else      Const (Int64.neg y)                       (* negated const *)
-          | _       -> e                                        (* no other optimization possible, exit *)
+            else Const (Int64.neg y)                            (* negated const *)
+          | _       -> Neg x'                                   (* no other optimization possible, exit *)
         end
     | Mult (x, y) ->
       let (x', y') = ((optimize x), (optimize y)) in            (* optimize inner expressions *)
@@ -1069,7 +1068,14 @@ let rec optimize (e:exp) : exp =
           | Const 0L, _
           | _, Const 0L       -> Const 0L                       (* mult by 0 *)
           | Const x, Const y  -> Const (Int64.mul x y)          (* mult consts together *)
-          | _, _              -> e                              (* no other optimization possible, exit *)
+          | Neg v1, Neg v2    -> Neg (Mult (v1, v2))            (* cumulate - *)
+          | (Mult (Const v1, Var v2)), Var v3                   (* cumulate vars *)
+          | (Mult (Var v2, Const v1)), Var v3
+          | Var v3, (Mult (Const v1, Var v2))
+          | Var v3, (Mult (Var v2, Const v1)) ->
+              if v2 = v3 then  Mult (Const (Int64.add v1 1L), Var v2)
+              else Mult (x', y')
+          | _, _              -> Mult (x', y')                  (* no other optimization possible, exit *)
         end
     | Add (x, y)  ->
       let (x', y') = ((optimize x), (optimize y)) in            (* optimize inner expressions *)
@@ -1077,6 +1083,9 @@ let rec optimize (e:exp) : exp =
           | _, Const 0L             -> x'                       (* add 0, return first expression *)
           | Const 0L, _             -> y'                       (* add 0, return second expression *)
           | Const v1, Const v2      -> Const (Int64.add v1 v2)  (* add consts *)
+          | Var v1, Var v2          ->
+            if v1 = v2 then Mult (Const 2L, Var v1)             (* cumulate vars *)
+            else Add (x', y')
           | Var v1, (Neg (Var v2))
           | (Neg (Var v2)), Var v1  ->
             if v1 = v2 then Const 0L                            (* x-x, -x+x *)
