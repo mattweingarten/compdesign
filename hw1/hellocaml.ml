@@ -1080,8 +1080,8 @@ let rec optimize (e:exp) : exp =
           | Var v1, (Neg (Var v2))
           | (Neg (Var v2)), Var v1  ->
             if v1 = v2 then Const 0L                            (* x-x, -x+x *)
-            else            e                                   (* x-y, -x+y: can't optimize further *)
-          | _, _                    -> e                        (* no other optimization possible, exit *)
+            else Add (x', y')                                   (* x-y, -x+y: can't optimize further *)
+          | _, _                    -> Add (x', y')             (* no other optimization possible, exit *)
         end
     end
 
