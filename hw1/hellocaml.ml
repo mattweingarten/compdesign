@@ -516,7 +516,7 @@ let third_of_three (t:'a * 'b * 'c) : 'c =
 *)
 
 let compose_pair (p:(('b -> 'c) * ('a -> 'b))) : 'a -> 'c =
-  fun i -> fst p (snd p i)
+  fun f -> fst p (snd p f)
 
 
 (******************************************************************************)
@@ -762,9 +762,9 @@ let rev_t (l: 'a list) : 'a list =
 let rec insert (x:'a) (l:'a list) : 'a list =
   begin match l with
     | [] -> [x]
-    | h::ts -> if h < x then h::(insert x ts)
-      else if h = x then l
-      else x::h::ts
+    | y::ys -> if y < x then y::(insert x ys)
+      else if y = x then l
+      else x::y::ys
   end
 
 
@@ -874,8 +874,8 @@ let rec vars_of (e:exp) : string list =
   begin match e with
     | Var x -> [x]
     | Const x -> []
-    | Add (e1, e2) | Mult (e1, e2) -> union (vars_of e1) (vars_of e2) (* add and mult have same recursion *)
-    | Neg e -> vars_of e
+    | Add (x, y) | Mult (x, y) -> union (vars_of x) (vars_of y) (* add and mult have same recursion *)
+    | Neg x -> vars_of x
   end
 
 
@@ -898,12 +898,12 @@ let rec string_of (e:exp) : string =
   begin match e with
     | Var x -> x
     | Const x -> Int64.to_string x
-    | Add (e1, e2) | Mult (e1, e2) -> let op_str o =
+    | Add (x, y) | Mult (x, y) -> let op_str o =
       begin match o with
         | Add _ -> " + "
         | Mult _ -> " * "
         | _ -> raise Not_found
-      end in "(" ^ (string_of e1) ^ (op_str e) ^ (string_of e2) ^ ")"
+      end in "(" ^ (string_of x) ^ (op_str e) ^ (string_of y) ^ ")"
     | Neg e -> "-(" ^ (string_of e) ^ ")"
   end
 
@@ -1050,14 +1050,14 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
 
 let rec optimize (e:exp) : exp =  
   begin match e with
-    | Const _ | Var _ -> e                                    (* no optimization possible *)
+    | Const _ | Var _ -> e                                    (* leaves, return as is*)
     | Neg e' -> 
       begin match e' with     
         | Neg e'' -> optimize e''                             (* negation of negation eliminates itself *)
         | Const x ->                                          (* 0 = -0 *)
           if x = 0L   then Const 0L 
           else        Const (Int64.neg x)                     (* negated const *)
-        | _ -> optimize (Neg (optimize e'))                   (* optimize inner expression *)
+        | _ -> optimize (Neg (optimize e'))                   (* opt inner expression and optimize result also*)
       end
     | Mult (e1, e2) -> 
       begin match e1, e2 with
@@ -1072,7 +1072,7 @@ let rec optimize (e:exp) : exp =
         | Const 0L, _ -> optimize e2                          (* add 0 *)
         | _, Const 0L -> optimize e1
         | Const x, Const y -> Const (Int64.add x y)           (* add consts together *)
-        | _, _ -> optimize (Add (optimize e1, optimize e2))   (* recursive opt *)
+        | _, _ -> optimize (Add (optimize e1, optimize e2))   (* recursive opt of inner expression and opt result*)
       end
   end
 
@@ -1221,16 +1221,18 @@ let rec compile (e:exp) : program =
   let match_op o = 
     begin match o with
       | Const x -> [IPushC x]
-      | Var x -> [IPushV x]
-      | Add _ -> [IAdd]
-      | Mult _ -> [IMul]
-      | Neg _ -> [INeg]
-    end in begin match e with
-    | Const x -> match_op e
-    | Var x -> match_op e
-    | Add (x, y) | Mult (x, y) -> append (append (compile x) (compile y)) (match_op e)
-    | Neg x -> append (compile x) (match_op e)
-  end
+      | Var x   -> [IPushV x]
+      | Add _   -> [IAdd]
+      | Mult _  -> [IMul]
+      | Neg _   -> [INeg]
+    end in
+      let get_stack_head exp =
+        begin match exp with
+          | Add (x, y) | Mult (x, y)  -> (compile x) @ (compile y)
+          | Neg x                     -> (compile x)
+          | _                         -> [] 
+      end in
+        (get_stack_head e) @ (match_op e) 
 
 
 
