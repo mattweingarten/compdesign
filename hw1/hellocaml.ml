@@ -874,8 +874,7 @@ let rec vars_of (e:exp) : string list =
   begin match e with
     | Var x -> [x]
     | Const x -> []
-    | Add (e1, e2) -> union (vars_of e1) (vars_of e2)
-    | Mult (e1, e2) -> union (vars_of e1) (vars_of e2)
+    | Add (e1, e2) | Mult (e1, e2) -> union (vars_of e1) (vars_of e2) (* add and mult have same recursion *)
     | Neg e -> vars_of e
   end
 
@@ -899,8 +898,12 @@ let rec string_of (e:exp) : string =
   begin match e with
     | Var x -> x
     | Const x -> Int64.to_string x
-    | Add (e1, e2) -> "(" ^ (string_of e1) ^ " + " ^ (string_of e2) ^ ")"
-    | Mult (e1, e2) -> "(" ^ (string_of e1) ^ " * " ^ (string_of e2) ^ ")"
+    | Add (e1, e2) | Mult (e1, e2) -> let op_str o =
+      begin match o with
+        | Add _ -> " + "
+        | Mult _ -> " * "
+        | _ -> raise Not_found
+      end in "(" ^ (string_of e1) ^ (op_str e) ^ (string_of e2) ^ ")"
     | Neg e -> "-(" ^ (string_of e) ^ ")"
   end
 
@@ -1215,12 +1218,18 @@ let ans1 = run [] p1
    - You should test the correctness of your compiler on several examples.
 *)
 let rec compile (e:exp) : program =
-  begin match e with
-    | Const x -> [IPushC x]
-    | Var x -> [IPushV x]
-    | Add (e1, e2) -> append (append (compile e1) (compile e2)) [IAdd]
-    | Mult (e1, e2) -> append (append (compile e1) (compile e2)) [IMul]
-    | Neg e -> append (compile e) [INeg]
+  let match_op o = 
+    begin match o with
+      | Const x -> [IPushC x]
+      | Var x -> [IPushV x]
+      | Add _ -> [IAdd]
+      | Mult _ -> [IMul]
+      | Neg _ -> [INeg]
+    end in begin match e with
+    | Const x -> match_op e
+    | Var x -> match_op e
+    | Add (x, y) | Mult (x, y) -> append (append (compile x) (compile y)) (match_op e)
+    | Neg x -> append (compile x) (match_op e)
   end
 
 
