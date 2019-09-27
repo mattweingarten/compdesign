@@ -1051,7 +1051,7 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
 let rec optimize (e:exp) : exp =
   begin match e with
     | Const _ | Var _          -> e                             (* leaves, return as is*)
-    | Neg x           ->
+    | Neg x                    ->
       let x' = optimize x in                                    (* optimize inner expression *)
         begin match x' with
           | Neg y   -> y                                        (* negation of negation *)
