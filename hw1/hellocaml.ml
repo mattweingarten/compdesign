@@ -1055,9 +1055,7 @@ let rec optimize (e:exp) : exp =
       let x' = optimize x in                                    (* optimize inner expression *)
         begin match x' with
           | Neg y   -> y                                        (* negation of negation *)
-          | Const y ->                                          (* 0 = -0 *)
-            if y = 0L then Const 0L                             (* negate const *)
-            else Const (Int64.neg y)                            (* negated const *)
+          | Const y -> Const (Int64.neg y)                      (* negate const *)
           | _       -> Neg x'                                   (* no other optimization possible, exit *)
         end
     | Mult (x, y) ->
