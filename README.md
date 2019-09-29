@@ -1,3 +1,11 @@
+# Project
+## Build & Test
+```
+make        --build the project
+make test   --make and run tests
+make clean  --clean out builds and build files
+```
+
 # Docker
 ## Build 
 ```
