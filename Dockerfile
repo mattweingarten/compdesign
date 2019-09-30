@@ -6,13 +6,8 @@ RUN apt-get update && \
     apt-get clean; rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
 
 # install llvm
-RUN mkdir /llvm && cd /llvm && \
-    wget http://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz && tar -xf llvm-9.0.0.src.tar.xz && \
-    mkdir llvm-build && cd llvm-build && \
-    cmake -G "Unix Makefiles" ../llvm-9.0.0.src && \
-    make && \
-    make install && \
-    rm -rf /llvm
+RUN mkdir /llvm && cd /llvm && wget http://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz && tar -xf llvm-9.0.0.src.tar.xz \
+    && mkdir llvm-build && cd llvm-build && cmake -G "Unix Makefiles" ../llvm-9.0.0.src && make && make install && rm -rf /llvm
 
 # install opam and dependencies
 RUN apt-get update &&\

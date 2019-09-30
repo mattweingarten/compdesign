@@ -968,7 +968,8 @@ let ctxt2 : ctxt = [("x", 2L); ("y", 7L)]  (* maps "x" to 2L, "y" to 7L *)
 let rec lookup (x:string) (c:ctxt) : int64 =
   begin match x, c with
     | _, [] -> raise Not_found
-    | x, (k, v)::ys -> if x = k then v
+    | x, (k, v)::ys -> 
+      if x = k then v
       else lookup x ys
   end
 
@@ -1050,45 +1051,45 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
 
 let rec optimize (e:exp) : exp =
   begin match e with
-    | Const _ | Var _          -> e                             (* leaves, return as is*)
-    | Neg x                    ->
+    | Const _ | Var _ -> e                                      (* leaves, return as is*)
+    | Neg x ->
       let x' = optimize x in                                    (* optimize inner expression *)
         begin match x' with
-          | Neg y   -> y                                        (* negation of negation *)
+          | Neg y -> y                                          (* negation of negation *)
           | Const y -> Const (Int64.neg y)                      (* negate const *)
-          | _       -> Neg x'                                   (* no other optimization possible, exit *)
+          | _ -> Neg x'                                         (* no other optimization possible, exit *)
         end
     | Mult (x, y) ->
       let (x', y') = ((optimize x), (optimize y)) in            (* optimize inner expressions *)
         begin match x', y' with
-          | _, Const 1L       -> x'                             (* mult by 1, return first exp *)
-          | Const 1L, _       -> y'                             (* mult by 1, return second exp *)
+          | _, Const 1L -> x'                                   (* mult by 1, return first exp *)
+          | Const 1L, _ -> y'                                   (* mult by 1, return second exp *)
           | Const 0L, _
-          | _, Const 0L       -> Const 0L                       (* mult by 0 *)
-          | Const x, Const y  -> Const (Int64.mul x y)          (* mult consts together *)
-          | Neg v1, Neg v2    -> Neg (Mult (v1, v2))            (* cumulate - *)
+          | _, Const 0L -> Const 0L                             (* mult by 0 *)
+          | Const x, Const y -> Const (Int64.mul x y)           (* mult consts together *)
+          | Neg v1, Neg v2 -> Neg (Mult (v1, v2))               (* cumulate - *)
           | (Mult (Const v1, Var v2)), Var v3                   (* cumulate vars *)
           | (Mult (Var v2, Const v1)), Var v3
           | Var v3, (Mult (Const v1, Var v2))
           | Var v3, (Mult (Var v2, Const v1)) ->
-              if v2 = v3 then  Mult (Const (Int64.add v1 1L), Var v2)
-              else Mult (x', y')
-          | _, _              -> Mult (x', y')                  (* no other optimization possible, exit *)
+            if v2 = v3 then  Mult (Const (Int64.add v1 1L), Var v2)
+            else Mult (x', y')
+          | _, _ -> Mult (x', y')                               (* no other optimization possible, exit *)
         end
-    | Add (x, y)  ->
+    | Add (x, y) ->
       let (x', y') = ((optimize x), (optimize y)) in            (* optimize inner expressions *)
         begin match x', y' with
-          | _, Const 0L             -> x'                       (* add 0, return first expression *)
-          | Const 0L, _             -> y'                       (* add 0, return second expression *)
-          | Const v1, Const v2      -> Const (Int64.add v1 v2)  (* add consts *)
-          | Var v1, Var v2          ->
+          | _, Const 0L -> x'                                   (* add 0, return first expression *)
+          | Const 0L, _ -> y'                                   (* add 0, return second expression *)
+          | Const v1, Const v2 -> Const (Int64.add v1 v2)       (* add consts *)
+          | Var v1, Var v2 ->
             if v1 = v2 then Mult (Const 2L, Var v1)             (* cumulate vars *)
             else Add (x', y')
           | Var v1, (Neg (Var v2))
-          | (Neg (Var v2)), Var v1  ->
+          | (Neg (Var v2)), Var v1 ->
             if v1 = v2 then Const 0L                            (* x-x, -x+x *)
             else Add (x', y')                                   (* x-y, -x+y: can't optimize further *)
-          | _, _                    -> Add (x', y')             (* no other optimization possible, exit *)
+          | _, _ -> Add (x', y')                                (* no other optimization possible, exit *)
         end
     end
 
@@ -1237,16 +1238,16 @@ let rec compile (e:exp) : program =
   let match_op o =
     begin match o with
       | Const x -> [IPushC x]
-      | Var x   -> [IPushV x]
-      | Add _   -> [IAdd]
-      | Mult _  -> [IMul]
-      | Neg _   -> [INeg]
+      | Var x -> [IPushV x]
+      | Add _ -> [IAdd]
+      | Mult _ -> [IMul]
+      | Neg _ -> [INeg]
     end in
       let get_stack_head exp =
         begin match exp with
-          | Add (x, y) | Mult (x, y)  -> (compile x) @ (compile y)
-          | Neg x                     -> (compile x)
-          | _                         -> []
+          | Add (x, y) | Mult (x, y) -> (compile x) @ (compile y)
+          | Neg x -> (compile x)
+          | _ -> []
       end in
         (get_stack_head e) @ (match_op e)
 
