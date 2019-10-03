@@ -5,3 +5,7 @@
 *~
 # build directory
 _build
+# native files
+*.native
+# merlin files
+.merlin
