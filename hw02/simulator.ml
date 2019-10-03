@@ -156,6 +156,16 @@ let map_addr (addr:quad) : int option =
   else 
     None
 
+(* Interpret an operand and get it's value *)
+let interp_op (op:operand) : quad option =
+  begin match op with 
+    | Imm i -> failwith "imm unimplemented"
+    | Reg r -> failwith "reg unimplemented"
+    | Ind1 i -> failwith "ind1 unimplemented"
+    | Ind2 r -> failwith "ind2 unimplemented"
+    | Ind3 (r, i) -> failwith "ind3 unimplemented"
+  end
+
 (* Simulates one step of the machine:
     - fetch the instruction at %rip
     - compute the source and/or destination information from the operands

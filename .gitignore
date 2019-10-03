@@ -8,4 +8,4 @@ _build
 # native files
 *.native
 # merlin files
-.merlin
+*/.merlin
