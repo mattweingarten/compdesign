@@ -37,7 +37,6 @@ RUN apt-get update &&\
 
 # add eval for opam env to bashrc to actually load it on start
 RUN touch /root/.bashrc &&\
-    echo "source /root/.profile" >> /root/.bashrc &&\
     echo ". /root/.opam/opam-init/init.sh > /dev/null 2> /dev/null || true" >> /root/.bashrc
 
 # ocamlinit setup for toploop
