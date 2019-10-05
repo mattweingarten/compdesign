@@ -1,6 +1,6 @@
 (* X86lite Simulator *)
 
-(* See the documentation in the X86lite specification, available on the 
+(* See the documentation in the X86lite specification, available on the
    course web pages, for a detailed explanation of the instruction
    semantics.
 *)
@@ -92,7 +92,7 @@ let rind : reg -> int = function
 
 (* Convert an int64 to its sbyte representation *)
 let sbytes_of_int64 (i:int64) : sbyte list =
-  let open Char in 
+  let open Char in
   let open Int64 in
   List.map (fun n -> Byte (shift_right i n |> logand 0xffL |> to_int |> chr))
            [0; 8; 16; 24; 32; 40; 48; 56]
@@ -118,7 +118,7 @@ let sbytes_of_string (s:string) : sbyte list =
 (* Serialize an instruction to sbytes *)
 let sbytes_of_ins (op, args:ins) : sbyte list =
   let check = function
-    | Imm (Lbl _) | Ind1 (Lbl _) | Ind3 (Lbl _, _) -> 
+    | Imm (Lbl _) | Ind1 (Lbl _) | Ind3 (Lbl _, _) ->
       invalid_arg "sbytes_of_ins: tried to serialize a label!"
     | o -> ()
   in
@@ -132,17 +132,17 @@ let sbytes_of_data : data -> sbyte list = function
   | Quad (Lbl _) -> invalid_arg "sbytes_of_data: tried to serialize a label!"
 
 
-(* It might be useful to toggle printing of intermediate states of your 
+(* It might be useful to toggle printing of intermediate states of your
    simulator. *)
 let debug_simulator = ref false
 
 (* Interpret a condition code with respect to the given flags. *)
-let interp_cnd {fo; fs; fz} : cnd -> bool = fun x -> 
+let interp_cnd {fo; fs; fz} : cnd -> bool = fun x ->
   begin match x with
     | Eq -> fz
     | Neq -> not fz
     | Gt -> (fo = fs) && (not fz)
-    | Ge -> (fo = fs) 
+    | Ge -> (fo = fs)
     | Lt -> fo != fs
     | Le -> (fo != fs) || fz
   end
@@ -153,18 +153,9 @@ let interp_cnd {fo; fs; fz} : cnd -> bool = fun x ->
 let map_addr (addr:quad) : int option =
   if addr >= mem_bot && addr < mem_top then
     Some (Int64.to_int (Int64.sub addr mem_bot))
-  else 
+  else
     None
 
-(* Interpret an operand and get it's value *)
-let interp_op (op:operand) : quad option =
-  begin match op with 
-    | Imm i -> failwith "imm unimplemented"
-    | Reg r -> failwith "reg unimplemented"
-    | Ind1 i -> failwith "ind1 unimplemented"
-    | Ind2 r -> failwith "ind2 unimplemented"
-    | Ind3 (r, i) -> failwith "ind3 unimplemented"
-  end
 
 (* Simulates one step of the machine:
     - fetch the instruction at %rip
@@ -174,11 +165,28 @@ let interp_op (op:operand) : quad option =
     - set the condition flags
 *)
 let step (m:mach) : unit =
+  let get_option (o: a option) =
+    if (o = None) raise
+  let interp_imm (i:imm) =
+    begin match i with
+      | Lit li -> li
+      | Lbl lb -> int64_of_sbytes @@ sbytes_of_string lb
+    end in
+  let interp_reg (r:reg) = m.regs.(rind r) in
+  let interp_op (op:operand) : quad =
+    begin match op with
+      | Imm i -> interp_imm i
+      | Reg r -> interp_reg r
+      | Ind1 i -> int64_of_sbytes m.mem.(Option.get @@ map_addr @@ interp_imm i)
+      | Ind2 r -> int64_of_sbytes m.mem.(map_addr @@ interp_reg)
+      | Ind3 (r, i) -> int64_of_sbytes m.mem.(map_addr @@ Int64.add (interp_reg r) (interp_imm i))
+    end in
+
 failwith "step unimplemented"
 
 (* Runs the machine until the rip register reaches a designated
    memory address. *)
-let run (m:mach) : int64 = 
+let run (m:mach) : int64 =
   while m.regs.(rind Rip) <> exit_addr do step m done;
   m.regs.(rind Rax)
 
@@ -203,7 +211,7 @@ exception Redefined_sym of lbl
    - compute the size of each segment
       Note: the size of an Asciz string section is (1 + the string length)
 
-   - resolve the labels to concrete addresses and 'patch' the instructions to 
+   - resolve the labels to concrete addresses and 'patch' the instructions to
      replace Lbl values with the corresponding Imm values.
 
    - the text segment starts at the lowest address
@@ -214,18 +222,18 @@ exception Redefined_sym of lbl
 let assemble (p:prog) : exec =
 failwith "assemble unimplemented"
 
-(* Convert an object file into an executable machine state. 
+(* Convert an object file into an executable machine state.
     - allocate the mem array
-    - set up the memory state by writing the symbolic bytes to the 
-      appropriate locations 
+    - set up the memory state by writing the symbolic bytes to the
+      appropriate locations
     - create the inital register state
       - initialize rip to the entry point address
-      - initializes rsp to the last word in memory 
+      - initializes rsp to the last word in memory
       - the other registers are initialized to 0
     - the condition code flags start as 'false'
 
-  Hint: The Array.make, Array.blit, and Array.of_list library functions 
+  Hint: The Array.make, Array.blit, and Array.of_list library functions
   may be of use.
 *)
-let load {entry; text_pos; data_pos; text_seg; data_seg} : mach = 
+let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
 failwith "load unimplemented"
