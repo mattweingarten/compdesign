@@ -165,24 +165,26 @@ let map_addr (addr:quad) : int option =
     - set the condition flags
 *)
 let step (m:mach) : unit =
-  let get_option (o: a option) =
-    if (o = None) raise
+  let get_option (o: int option) =
+    begin match o with
+      | Some x -> x
+      | None -> raise X86lite_segfault
+    end in
   let interp_imm (i:imm) =
     begin match i with
       | Lit li -> li
-      | Lbl lb -> int64_of_sbytes @@ sbytes_of_string lb
+      | Lbl lb -> raise @@ Invalid_argument "lbl not resolved"
     end in
   let interp_reg (r:reg) = m.regs.(rind r) in
   let interp_op (op:operand) : quad =
     begin match op with
-      | Imm i -> interp_imm i
+    | Imm i -> interp_imm i
       | Reg r -> interp_reg r
-      | Ind1 i -> int64_of_sbytes m.mem.(Option.get @@ map_addr @@ interp_imm i)
-      | Ind2 r -> int64_of_sbytes m.mem.(map_addr @@ interp_reg)
-      | Ind3 (r, i) -> int64_of_sbytes m.mem.(map_addr @@ Int64.add (interp_reg r) (interp_imm i))
+      | Ind1 i -> int64_of_sbytes [m.mem.(get_option @@ map_addr @@ interp_imm i)]
+      | Ind2 r -> int64_of_sbytes [m.mem.(get_option @@ map_addr @@ interp_reg r)]
+      | Ind3 (i, r) -> int64_of_sbytes [m.mem.(get_option @@ map_addr @@ Int64.add (interp_reg r) (interp_imm i))]
     end in
-
-failwith "step unimplemented"
+  failwith "step unimplemented"
 
 (* Runs the machine until the rip register reaches a designated
    memory address. *)
