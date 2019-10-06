@@ -156,6 +156,21 @@ let map_addr (addr:quad) : int option =
   else
     None
 
+(* Get option or throw segfault *)
+let get_option o =
+  begin match o with
+    | Some x -> x
+    | None -> raise X86lite_segfault
+  end
+
+(* get source from list *)
+let get_src l = List.nth_opt l 0
+
+(* get dst from list *)
+let get_dst l = List.nth_opt l 1
+
+(* map addr and extract option *)
+let get_addr a = get_option @@ map_addr a
 
 (* Simulates one step of the machine:
    - fetch the instruction at %rip
@@ -165,11 +180,6 @@ let map_addr (addr:quad) : int option =
    - set the condition flags
 *)
 let step (m:mach) : unit =
-  let get_option (o:int option) =
-    begin match o with
-      | Some x -> x
-      | None -> raise X86lite_segfault
-    end in
   let interp_imm (i:imm) =
     begin match i with
       | Lit li -> li
@@ -187,35 +197,35 @@ let step (m:mach) : unit =
       | [] -> []
       | o::ops -> (interp_op o)::(get_ops ops)
     end in
-  let set_sign (v:quad) = 
+  let set_sign (v:quad) =
     let sign = Int64.shift_right_logical v 63 in
-    if sign = 1L then m.flags.fs <- true 
+    if sign = 1L then m.flags.fs <- true
     else m.flags.fs <- false in
   let set_zero (v:quad) =
-    if v = 0L then m.flags.fz <- true 
+    if v = 0L then m.flags.fz <- true
     else m.flags.fz <- false in
+  let rec store_sbytes bytes addr =
+    Printf.printf "storing bytes at *%s\n" @@ Int64.to_string addr;
+    begin match bytes with
+      | [] -> ()
+      | hd::tl ->
+        let m_addr = get_addr addr in
+        Printf.printf "mapped index *%d\n" m_addr;
+        m.mem.(m_addr) <- hd;
+        store_sbytes tl (Int64.succ addr)
+    end in
   let store_res (res:quad) (d_op:operand) (d_addr:quad)=
     begin match d_op with
       | Reg reg -> m.regs.(rind reg) <- res
-      | _ -> 
+      | _ ->
         let res_sbytes = sbytes_of_int64 res in
-        let rec store_sbytes bytes addr =
-          Printf.printf "storing bytes at *%s\n" @@ Int64.to_string addr;
-          begin match bytes with
-            | [] -> ()
-            | hd::tl -> 
-              let m_addr = get_option @@ map_addr addr in
-              Printf.printf "mapped index *%d\n" m_addr;
-              m.mem.(m_addr) <- hd;
-              store_sbytes tl (Int64.succ addr)
-          end in
         Printf.printf "addr %s res %s\n" (Int64.to_string d_addr) (Int64.to_string res);
         store_sbytes res_sbytes d_addr
     end in
-  let instr = m.mem.(get_option @@ map_addr @@ m.regs.(rind Rip)) in
-  let rip_next = 
+  let instr = m.mem.(get_addr m.regs.(rind Rip)) in
+  let rip_next =
     m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L;
-    begin match m.mem.(get_option @@ map_addr m.regs.(rind Rip)) with
+    begin match m.mem.(get_addr m.regs.(rind Rip)) with
       | InsB0 _ -> ()
       | _ -> m.regs.(rind Rip) <- exit_addr
     end;
@@ -223,13 +233,20 @@ let step (m:mach) : unit =
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in
+      let src = get_src ops in
+      let d_op = get_dst os in
+      let d_addr = get_dst ops in
       begin match oc with
-        | Movq -> 
-          let src = List.nth ops 0 in
-          let d_op = List.nth os 1 in
-          let d_addr = List.nth ops 1 in
-          Printf.printf "Movq %s %s \n" (Int64.to_string src) (string_of_operand d_op);
-          store_res src d_op d_addr;
+        | Leaq ->
+          begin match (List.hd os) with
+            | Ind1 _ | Ind2 _ | Ind3 _ ->
+              store_res (get_option src) (get_option d_op) (get_option d_addr)
+            | _ -> raise @@ Invalid_argument "expected ind"
+          end
+        | Movq -> store_res (get_option src) (get_option d_op) (get_option d_addr)
+        | Pushq -> 
+          m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
+          store_sbytes (sbytes_of_int64 @@ get_option src) m.regs.(rind Rsp)
         | _ -> ()
       end
     | _ -> ()
