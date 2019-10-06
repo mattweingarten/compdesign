@@ -205,12 +205,10 @@ let step (m:mach) : unit =
     if v = 0L then m.flags.fz <- true
     else m.flags.fz <- false in
   let rec store_sbytes bytes addr =
-    Printf.printf "storing bytes at *%s\n" @@ Int64.to_string addr;
     begin match bytes with
       | [] -> ()
       | hd::tl ->
         let m_addr = get_addr addr in
-        Printf.printf "mapped index *%d\n" m_addr;
         m.mem.(m_addr) <- hd;
         store_sbytes tl (Int64.succ addr)
     end in
@@ -219,17 +217,20 @@ let step (m:mach) : unit =
       | Reg reg -> m.regs.(rind reg) <- res
       | _ ->
         let res_sbytes = sbytes_of_int64 res in
-        Printf.printf "addr %s res %s\n" (Int64.to_string d_addr) (Int64.to_string res);
         store_sbytes res_sbytes d_addr
     end in
+  let get_sbytes addr : sbyte list = 
+    let rec helper addr acc = 
+      if acc < 8 then (m.mem.(get_addr addr))::(helper (Int64.succ addr) (acc + 1))
+      else [] in
+    helper addr 0 in
   let instr = m.mem.(get_addr m.regs.(rind Rip)) in
   let rip_next =
     m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L;
     begin match m.mem.(get_addr m.regs.(rind Rip)) with
       | InsB0 _ -> ()
       | _ -> m.regs.(rind Rip) <- exit_addr
-    end;
-    Printf.printf "new rip %s\n" @@ Int64.to_string m.regs.(rind Rip) in
+    end in
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in
@@ -247,6 +248,9 @@ let step (m:mach) : unit =
         | Pushq -> 
           m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
           store_sbytes (sbytes_of_int64 @@ get_option src) m.regs.(rind Rsp)
+        | Popq ->
+          store_res (int64_of_sbytes @@ get_sbytes m.regs.(rind Rsp)) (List.hd os) (get_option src);
+          m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
         | _ -> ()
       end
     | _ -> ()
