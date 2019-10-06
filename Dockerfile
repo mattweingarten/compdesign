@@ -45,15 +45,8 @@ RUN touch /root/.ocamlinit &&\
     echo "#thread;;" >> /root/.ocamlinit &&\
     echo "#require "'"'"core.top"'"'";;" >> /root/.ocamlinit &&\
     echo "#require "'"'"core.syntax"'"'";;" >> /root/.ocamlinit &&\
-    echo "#load "'"'"nums.cma"'"' >> root/.ocamlinit &&\
-    echo "#load "'"'"str.cma"'"' >> /root/.ocamlinit &&\
-    echo "#load "'"'"unix.cma"'"' >> /root/.ocamlinit &&\
-    echo "#mod_use "'"'"util/assert.ml"'"' >> /root/.ocamlinit &&\
-    echo "#mod_use "'"'"X86/x86.ml"'"' >> /root/.ocamlinit &&\
-    echo "#mod_use "'"'"int64_overflow.ml"'"' >> /root/.ocamlinit &&\
-    echo "#mod_use "'"'"simulator.ml"'"' >> /root/.ocamlinit &&\
-    echo "#use "'"'"simulator.ml"'"' >> /root/.ocamlinit &&\
-    echo "#use "'"'"gradedtests.ml"'"' >> /root/.ocamlinit
+    echo "#mod_use "'"'"util/assert.ml"'"'";;" >> /root/.ocamlinit &&\
+    echo "#mod_use "'"'"X86/x86.ml"'"'";;" >> /root/.ocamlinit
 
 # create working directory
 RUN mkdir /home/cd_project

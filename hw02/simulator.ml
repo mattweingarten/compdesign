@@ -134,7 +134,7 @@ let sbytes_of_data : data -> sbyte list = function
 
 (* It might be useful to toggle printing of intermediate states of your
    simulator. *)
-let debug_simulator = ref true
+let debug_simulator = ref false
 
 (* Interpret a condition code with respect to the given flags. *)
 let interp_cnd {fo; fs; fz} : cnd -> bool = fun x ->
@@ -194,25 +194,42 @@ let step (m:mach) : unit =
   let set_zero (v:quad) =
     if v = 0L then m.flags.fz <- true 
     else m.flags.fz <- false in
-  let set_flags (r:Int64_overflow.t) = 
-    set_sign r.value;
-    set_zero r.value;
-    m.flags.fo <- r.overflow in
-  let store_res (res:quad) (dst:operand) =
-    begin match dst with
+  let store_res (res:quad) (d_op:operand) (d_addr:quad)=
+    begin match d_op with
       | Reg reg -> m.regs.(rind reg) <- res
-      | _ -> ()
+      | _ -> 
+        let res_sbytes = sbytes_of_int64 res in
+        let rec store_sbytes bytes addr =
+          Printf.printf "storing bytes at *%s\n" @@ Int64.to_string addr;
+          begin match bytes with
+            | [] -> ()
+            | hd::tl -> 
+              let m_addr = get_option @@ map_addr addr in
+              Printf.printf "mapped index *%d\n" m_addr;
+              m.mem.(m_addr) <- hd;
+              store_sbytes tl (Int64.succ addr)
+          end in
+        Printf.printf "addr %s res %s\n" (Int64.to_string d_addr) (Int64.to_string res);
+        store_sbytes res_sbytes d_addr
     end in
-  let instr = m.mem.(get_option @@ map_addr @@ m.regs.(rind @@ Rip)) in
+  let instr = m.mem.(get_option @@ map_addr @@ m.regs.(rind Rip)) in
+  let rip_next = 
+    m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L;
+    begin match m.mem.(get_option @@ map_addr m.regs.(rind Rip)) with
+      | InsB0 _ -> ()
+      | _ -> m.regs.(rind Rip) <- exit_addr
+    end;
+    Printf.printf "new rip %s\n" @@ Int64.to_string m.regs.(rind Rip) in
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in
       begin match oc with
         | Movq -> 
           let src = List.nth ops 0 in
-          let dst = List.nth os 1 in
-          Printf.printf "Movq %s %s " (string_of_operand @@ List.nth os 0) (string_of_operand @@ List.nth os 1);
-          store_res src dst
+          let d_op = List.nth os 1 in
+          let d_addr = List.nth ops 1 in
+          Printf.printf "Movq %s %s \n" (Int64.to_string src) (string_of_operand d_op);
+          store_res src d_op d_addr;
         | _ -> ()
       end
     | _ -> ()
