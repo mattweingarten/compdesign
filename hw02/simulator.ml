@@ -134,7 +134,7 @@ let sbytes_of_data : data -> sbyte list = function
 
 (* It might be useful to toggle printing of intermediate states of your
    simulator. *)
-let debug_simulator = ref false
+let debug_simulator = ref true
 
 (* Interpret a condition code with respect to the given flags. *)
 let interp_cnd {fo; fs; fz} : cnd -> bool = fun x ->
@@ -203,16 +203,16 @@ let step (m:mach) : unit =
       | Reg reg -> m.regs.(rind reg) <- res
       | _ -> ()
     end in
-  let instr = m.mem.(get_option @@ map_addr @@ interp_op @@ Reg Rip) in
+  let instr = m.mem.(get_option @@ map_addr @@ m.regs.(rind @@ Rip)) in
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in
       begin match oc with
-        | Negq -> 
-          let d = List.hd ops in
-          let n = Int64_overflow.neg d in
-          store_res n.value (List.hd os);
-          set_flags n
+        | Movq -> 
+          let src = List.nth ops 0 in
+          let dst = List.nth os 1 in
+          Printf.printf "Movq %s %s " (string_of_operand @@ List.nth os 0) (string_of_operand @@ List.nth os 1);
+          store_res src dst
         | _ -> ()
       end
     | _ -> ()
