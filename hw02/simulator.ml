@@ -95,7 +95,7 @@ let sbytes_of_int64 (i:int64) : sbyte list =
   let open Char in
   let open Int64 in
   List.map (fun n -> Byte (shift_right i n |> logand 0xffL |> to_int |> chr))
-           [0; 8; 16; 24; 32; 40; 48; 56]
+    [0; 8; 16; 24; 32; 40; 48; 56]
 
 (* Convert an sbyte representation to an int64 *)
 let int64_of_sbytes (bs:sbyte list) : int64 =
@@ -158,14 +158,14 @@ let map_addr (addr:quad) : int option =
 
 
 (* Simulates one step of the machine:
-    - fetch the instruction at %rip
-    - compute the source and/or destination information from the operands
-    - simulate the instruction semantics
-    - update the registers and/or memory appropriately
-    - set the condition flags
+   - fetch the instruction at %rip
+   - compute the source and/or destination information from the operands
+   - simulate the instruction semantics
+   - update the registers and/or memory appropriately
+   - set the condition flags
 *)
 let step (m:mach) : unit =
-  let get_option (o: int option) =
+  let get_option (o:int option) =
     begin match o with
       | Some x -> x
       | None -> raise X86lite_segfault
@@ -178,13 +178,56 @@ let step (m:mach) : unit =
   let interp_reg (r:reg) = m.regs.(rind r) in
   let interp_op (op:operand) : quad =
     begin match op with
-    | Imm i -> interp_imm i
-      | Reg r -> interp_reg r
-      | Ind1 i -> int64_of_sbytes [m.mem.(get_option @@ map_addr @@ interp_imm i)]
-      | Ind2 r -> int64_of_sbytes [m.mem.(get_option @@ map_addr @@ interp_reg r)]
-      | Ind3 (i, r) -> int64_of_sbytes [m.mem.(get_option @@ map_addr @@ Int64.add (interp_reg r) (interp_imm i))]
+      | Imm i | Ind1 i -> interp_imm i
+      | Reg r | Ind2 r -> interp_reg r
+      | Ind3 (i, r) -> Int64.add (interp_reg r) (interp_imm i)
     end in
-  failwith "step unimplemented"
+  let rec get_ops (os:operand list) =
+    begin match os with
+      | [] -> []
+      | o::ops -> (interp_op o)::(get_ops ops)
+    end in
+  let set_sign (v:quad) = 
+    let sign = Int64.shift_right_logical v 63 in
+    if sign = 1L then m.flags.fs <- true 
+    else m.flags.fs <- false in
+  let set_zero (v:quad) =
+    if v = 0L then m.flags.fz <- true 
+    else m.flags.fz <- false in
+  let set_flags (r:Int64_overflow.t) = 
+    set_sign r.value;
+    set_zero r.value;
+    m.flags.fo <- r.overflow in
+  let store_res (res:quad) (dst:operand) =
+    begin match dst with
+      | Reg reg -> m.regs.(rind reg) <- res
+      | _ -> ()
+    end in
+  let instr = m.mem.(get_option @@ map_addr @@ interp_op @@ Reg Rip) in
+  begin match instr with
+    | InsB0 (oc, os) ->
+      let ops = get_ops os in
+      begin match oc with
+        | Negq -> 
+          let d = List.hd ops in
+          let n = Int64_overflow.neg d in
+          store_res n.value (List.hd os);
+          set_flags n
+        | _ -> ()
+      end
+    | _ -> ()
+  end
+
+(*
+      Movq | Pushq | Popq
+            | Leaq
+            | Incq | Decq | Negq | Notq
+            | Addq | Subq | Imulq | Xorq | Orq | Andq
+            | Shlq | Sarq | Shrq
+            | Cmpq
+            | Jmp | Je | Jne | Jg | Jge | Jl | Jle
+            | Callq | Retq
+*)
 
 (* Runs the machine until the rip register reaches a designated
    memory address. *)
@@ -219,23 +262,23 @@ exception Redefined_sym of lbl
    - the text segment starts at the lowest address
    - the data segment starts after the text segment
 
-  HINT: List.fold_left and List.fold_right are your friends.
- *)
+   HINT: List.fold_left and List.fold_right are your friends.
+*)
 let assemble (p:prog) : exec =
-failwith "assemble unimplemented"
+  failwith "assemble unimplemented"
 
 (* Convert an object file into an executable machine state.
-    - allocate the mem array
-    - set up the memory state by writing the symbolic bytes to the
+   - allocate the mem array
+   - set up the memory state by writing the symbolic bytes to the
       appropriate locations
-    - create the inital register state
-      - initialize rip to the entry point address
-      - initializes rsp to the last word in memory
-      - the other registers are initialized to 0
-    - the condition code flags start as 'false'
+   - create the inital register state
+   - initialize rip to the entry point address
+   - initializes rsp to the last word in memory
+   - the other registers are initialized to 0
+   - the condition code flags start as 'false'
 
-  Hint: The Array.make, Array.blit, and Array.of_list library functions
-  may be of use.
+   Hint: The Array.make, Array.blit, and Array.of_list library functions
+   may be of use.
 *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
-failwith "load unimplemented"
+  failwith "load unimplemented"
