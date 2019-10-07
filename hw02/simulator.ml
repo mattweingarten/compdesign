@@ -261,11 +261,8 @@ let step (m:mach) : unit =
               | _ -> Int64.shift_left (int64_of_sbytes @@ get_sbytes @@ get_option d_int) amt
             end in
           let top2 = Int64.shift_right_logical shifted 62 in 
-          Printf.printf "amt %d\n" amt;
-          Printf.printf "shifted %s\n" @@ Int64.to_string shifted;
           if amt = 1 && (Int64.equal top2 0L || Int64.equal top2 3L) then m.flags.fo <- true
           else if amt != 0 then set_flags shifted;
-          Printf.printf "here";
           store_res shifted (get_option d_op) (get_option d_int)
         | Shrq -> failwith "shrq unimplemented"
         | Set cc -> failwith "set unimplemented"
