@@ -217,6 +217,13 @@ let step (m:mach) : unit =
       if acc < 8 then (m.mem.(get_addr addr))::(helper (Int64.succ addr) (acc + 1))
       else [] in
     helper addr 0 in
+  let set_zero (v:quad) = 
+    if Int64.equal v 0L then m.flags.fz <- true
+    else m.flags.fz <- false in 
+  let set_sign (v:quad) =
+    let shifted = Int64.shift_right_logical v 63 in
+    if Int64.equal shifted 1L then m.flags.fs <- true
+    else m.flags.fs <- false in
   let instr = m.mem.(get_addr m.regs.(rind Rip)) in (* current instruction *)
   begin match instr with
     | InsB0 (oc, os) ->
@@ -227,7 +234,23 @@ let step (m:mach) : unit =
       let d_addr = get_dst ops in (* dst interpreted operand *)
       begin match oc with
         (* Bit manipulation instructions *)
-        | Sarq -> failwith "sarq unimplemented"
+        | Sarq -> 
+          let amt = 
+            let t = get_option s_op in
+            begin match t with 
+              | Reg Rcx | Imm _ -> Int64.to_int @@ get_option s_addr
+              | _ -> raise @@ Invalid_argument "expected either imm or rcx"
+            end in
+          let shifted = 
+            let t = get_option d_op in
+            begin match t with
+              | Reg _ -> Int64.shift_right (get_option d_addr) amt
+              | _ -> Int64.shift_right (int64_of_sbytes @@ get_sbytes @@ get_option s_addr) amt
+            end in
+          set_sign shifted;
+          set_zero shifted;
+          if amt = 1 then m.flags.fo <- false;
+          store_res shifted (get_option d_op) (get_option d_addr)
         | Shlq -> failwith "shlq unimplemented"
         | Shrq -> failwith "shrq unimplemented"
         | Set cc -> failwith "set unimplemented"
