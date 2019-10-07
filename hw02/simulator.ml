@@ -180,24 +180,24 @@ let get_addr a = get_option @@ map_addr a
    - set the condition flags
 *)
 let step (m:mach) : unit =
-  let interp_imm (i:imm) =
+  let interp_imm (i:imm) = (* interpret immediate *)
     begin match i with
       | Lit li -> li
       | Lbl lb -> raise @@ Invalid_argument "lbl not resolved"
     end in
-  let interp_reg (r:reg) = m.regs.(rind r) in
-  let interp_op (op:operand) : quad =
+  let interp_reg (r:reg) = m.regs.(rind r) in (* intepret reg (get its value) *)
+  let interp_op (op:operand) : quad = (* interpret operand *)
     begin match op with
       | Imm i | Ind1 i -> interp_imm i
       | Reg r | Ind2 r -> interp_reg r
       | Ind3 (i, r) -> Int64.add (interp_reg r) (interp_imm i)
     end in
-  let rec get_ops (os:operand list) =
+  let rec get_ops (os:operand list) = (* get list of interpreted operands from operand list *)
     begin match os with
       | [] -> []
       | o::ops -> (interp_op o)::(get_ops ops)
     end in
-  let rec store_sbytes bytes addr =
+  let rec store_sbytes (bytes:sbyte list) (addr:quad) = (* store sbytes at addr *)
     begin match bytes with
       | [] -> ()
       | hd::tl ->
@@ -205,33 +205,32 @@ let step (m:mach) : unit =
         m.mem.(m_addr) <- hd;
         store_sbytes tl (Int64.succ addr)
     end in
-  let store_res (res:quad) (d_op:operand) (d_addr:quad)=
+  let store_res (res:quad) (d_op:operand) (d_addr:quad) = (* store result at dst *)
     begin match d_op with
       | Reg reg -> m.regs.(rind reg) <- res
       | _ ->
         let res_sbytes = sbytes_of_int64 res in
         store_sbytes res_sbytes d_addr
     end in
-  let get_sbytes addr : sbyte list = 
+  let get_sbytes (addr:quad) : sbyte list =  (* get 8 bytes memory location as sbytes list, to retrieve values from mem *) 
     let rec helper addr acc = 
       if acc < 8 then (m.mem.(get_addr addr))::(helper (Int64.succ addr) (acc + 1))
       else [] in
     helper addr 0 in
-  let instr = m.mem.(get_addr m.regs.(rind Rip)) in
-  let rip_next =
-    m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L;
-    begin match m.mem.(get_addr m.regs.(rind Rip)) with
-      | InsB0 _ -> ()
-      | _ -> m.regs.(rind Rip) <- exit_addr
-    end in
+  let instr = m.mem.(get_addr m.regs.(rind Rip)) in (* current instruction *)
   begin match instr with
     | InsB0 (oc, os) ->
-      let ops = get_ops os in
-      let s_op = get_src os in
-      let s_addr = get_src ops in
-      let d_op = get_dst os in
-      let d_addr = get_dst ops in
+      let ops = get_ops os in     (* list of interpreted operands *)
+      let s_op = get_src os in    (* source operand *)
+      let s_addr = get_src ops in (* source interpreted operand *)
+      let d_op = get_dst os in    (* dst operand *)
+      let d_addr = get_dst ops in (* dst interpreted operand *)
       begin match oc with
+        (* Bit manipulation instructions *)
+        | Sarq -> failwith "sarq unimplemented"
+        | Shlq -> failwith "shlq unimplemented"
+        | Shrq -> failwith "shrq unimplemented"
+        | Set cc -> failwith "set unimplemented"
         (* Data movement instructions *)
         | Leaq ->
           begin match (List.hd os) with
@@ -248,8 +247,10 @@ let step (m:mach) : unit =
           m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
         | _ -> ()
       end
-    | _ -> ()
-  end
+    | _ ->  m.regs.(rind Rip) <- exit_addr
+
+  end;
+  m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L  (* update rip to next instruction *)
 
 (*
       Movq | Pushq | Popq
