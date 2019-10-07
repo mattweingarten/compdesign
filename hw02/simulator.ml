@@ -217,14 +217,15 @@ let step (m:mach) : unit =
       if acc < 8 then (m.mem.(get_addr addr))::(helper (Int64.succ addr) (acc + 1))
       else [] in
     helper addr 0 in
-  let set_zero (v:quad) = 
+  let set_zero (v:quad) =   (* set zero flag given v *)
     if Int64.equal v 0L then m.flags.fz <- true
     else m.flags.fz <- false in 
-  let set_sign (v:quad) =
+  let set_sign (v:quad) =   (* set sign flag given v *)
     let shifted = Int64.shift_right_logical v 63 in
     if Int64.equal shifted 1L then m.flags.fs <- true
     else m.flags.fs <- false in
-  let instr = m.mem.(get_addr m.regs.(rind Rip)) in (* current instruction *)
+  let set_flags (v:quad) = set_sign v; set_zero v in  (* set zero and sign flags given v *)
+  let instr = m.mem.(get_addr m.regs.(rind Rip)) in   (* current instruction *)
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in     (* list of interpreted operands *)
@@ -247,8 +248,7 @@ let step (m:mach) : unit =
               | Reg _ -> Int64.shift_right (get_option d_addr) amt
               | _ -> Int64.shift_right (int64_of_sbytes @@ get_sbytes @@ get_option s_addr) amt
             end in
-          set_sign shifted;
-          set_zero shifted;
+          set_flags shifted;
           if amt = 1 then m.flags.fo <- false;
           store_res shifted (get_option d_op) (get_option d_addr)
         | Shlq -> failwith "shlq unimplemented"
