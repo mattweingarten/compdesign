@@ -205,13 +205,13 @@ let step (m:mach) : unit =
         m.mem.(m_addr) <- hd;
         store_sbytes tl (Int64.succ addr)
     end in
-  let store_res (res:quad) (d_op:operand) (d_addr:quad) = (* store result at dst *)
+  let store_res (res:quad) (d_op:operand) (d_int:quad) = (* store result at dst *)
     begin match d_op with
       | Reg reg -> m.regs.(rind reg) <- res
       | _ ->
         let res_sbytes = sbytes_of_int64 res in
-        store_sbytes res_sbytes d_addr
-    end in
+        store_sbytes res_sbytes d_int
+    end in 
   let get_sbytes (addr:quad) : sbyte list =  (* get 8 bytes memory location as sbytes list, to retrieve values from mem *) 
     let rec helper addr acc = 
       if acc < 8 then (m.mem.(get_addr addr))::(helper (Int64.succ addr) (acc + 1))
@@ -224,49 +224,64 @@ let step (m:mach) : unit =
     let shifted = Int64.shift_right_logical v 63 in
     if Int64.equal shifted 1L then m.flags.fs <- true
     else m.flags.fs <- false in
+  let get_amt (op:operand) (v:quad)= 
+    let t = op in
+    begin match t with 
+      | Reg Rcx | Imm _ -> Int64.to_int v
+      | _ -> raise @@ Invalid_argument "expected either imm or rcx"
+    end in
   let set_flags (v:quad) = set_sign v; set_zero v in  (* set zero and sign flags given v *)
   let instr = m.mem.(get_addr m.regs.(rind Rip)) in   (* current instruction *)
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in     (* list of interpreted operands *)
       let s_op = get_src os in    (* source operand *)
-      let s_addr = get_src ops in (* source interpreted operand *)
+      let s_int = get_src ops in (* source interpreted operand *)
       let d_op = get_dst os in    (* dst operand *)
-      let d_addr = get_dst ops in (* dst interpreted operand *)
+      let d_int = get_dst ops in (* dst interpreted operand *)
       begin match oc with
         (* Bit manipulation instructions *)
         | Sarq -> 
-          let amt = 
-            let t = get_option s_op in
-            begin match t with 
-              | Reg Rcx | Imm _ -> Int64.to_int @@ get_option s_addr
-              | _ -> raise @@ Invalid_argument "expected either imm or rcx"
-            end in
+          let amt = get_amt (get_option s_op) (get_option s_int) in
           let shifted = 
             let t = get_option d_op in
             begin match t with
-              | Reg _ -> Int64.shift_right (get_option d_addr) amt
-              | _ -> Int64.shift_right (int64_of_sbytes @@ get_sbytes @@ get_option s_addr) amt
+              | Reg _ -> Int64.shift_right (get_option d_int) amt
+              | _ -> Int64.shift_right (int64_of_sbytes @@ get_sbytes @@ get_option d_int) amt
             end in
-          set_flags shifted;
-          if amt = 1 then m.flags.fo <- false;
-          store_res shifted (get_option d_op) (get_option d_addr)
-        | Shlq -> failwith "shlq unimplemented"
+          if amt = 1 then m.flags.fo <- false
+          else if amt != 0 then set_flags shifted;
+          store_res shifted (get_option d_op) (get_option d_int)
+        | Shlq -> 
+          let amt = get_amt (get_option s_op) (get_option s_int) in
+          let shifted = 
+            let t = get_option d_op in
+            begin match t with
+              | Reg _ -> Int64.shift_left (get_option d_int) amt
+              | _ -> Int64.shift_left (int64_of_sbytes @@ get_sbytes @@ get_option d_int) amt
+            end in
+          let top2 = Int64.shift_right_logical shifted 62 in 
+          Printf.printf "amt %d\n" amt;
+          Printf.printf "shifted %s\n" @@ Int64.to_string shifted;
+          if amt = 1 && (Int64.equal top2 0L || Int64.equal top2 3L) then m.flags.fo <- true
+          else if amt != 0 then set_flags shifted;
+          Printf.printf "here";
+          store_res shifted (get_option d_op) (get_option d_int)
         | Shrq -> failwith "shrq unimplemented"
         | Set cc -> failwith "set unimplemented"
         (* Data movement instructions *)
         | Leaq ->
           begin match (List.hd os) with
             | Ind1 _ | Ind2 _ | Ind3 _ ->
-              store_res (get_option s_addr) (get_option d_op) (get_option d_addr)
+              store_res (get_option s_int) (get_option d_op) (get_option d_int)
             | _ -> raise @@ Invalid_argument "expected ind"
           end
-        | Movq -> store_res (get_option s_addr) (get_option d_op) (get_option d_addr)
+        | Movq -> store_res (get_option s_int) (get_option d_op) (get_option d_int)
         | Pushq -> 
           m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
-          store_sbytes (sbytes_of_int64 @@ get_option s_addr) m.regs.(rind Rsp)
+          store_sbytes (sbytes_of_int64 @@ get_option s_int) m.regs.(rind Rsp)
         | Popq ->
-          store_res (int64_of_sbytes @@ get_sbytes m.regs.(rind Rsp)) (get_option s_op) (get_option s_addr);
+          store_res (int64_of_sbytes @@ get_sbytes m.regs.(rind Rsp)) (get_option s_op) (get_option s_int);
           m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
         | _ -> ()
       end
