@@ -197,13 +197,6 @@ let step (m:mach) : unit =
       | [] -> []
       | o::ops -> (interp_op o)::(get_ops ops)
     end in
-  let set_sign (v:quad) =
-    let sign = Int64.shift_right_logical v 63 in
-    if sign = 1L then m.flags.fs <- true
-    else m.flags.fs <- false in
-  let set_zero (v:quad) =
-    if v = 0L then m.flags.fz <- true
-    else m.flags.fz <- false in
   let rec store_sbytes bytes addr =
     begin match bytes with
       | [] -> ()
@@ -234,22 +227,26 @@ let step (m:mach) : unit =
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in
-      let src = get_src ops in
+      let s_op = get_src os in
+      let s_addr = get_src ops in
       let d_op = get_dst os in
       let d_addr = get_dst ops in
       begin match oc with
+        | Negq -> 
+          ()
+        (* Data movement instructions *)
         | Leaq ->
           begin match (List.hd os) with
             | Ind1 _ | Ind2 _ | Ind3 _ ->
-              store_res (get_option src) (get_option d_op) (get_option d_addr)
+              store_res (get_option s_addr) (get_option d_op) (get_option d_addr)
             | _ -> raise @@ Invalid_argument "expected ind"
           end
-        | Movq -> store_res (get_option src) (get_option d_op) (get_option d_addr)
+        | Movq -> store_res (get_option s_addr) (get_option d_op) (get_option d_addr)
         | Pushq -> 
           m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
-          store_sbytes (sbytes_of_int64 @@ get_option src) m.regs.(rind Rsp)
+          store_sbytes (sbytes_of_int64 @@ get_option s_addr) m.regs.(rind Rsp)
         | Popq ->
-          store_res (int64_of_sbytes @@ get_sbytes m.regs.(rind Rsp)) (List.hd os) (get_option src);
+          store_res (int64_of_sbytes @@ get_sbytes m.regs.(rind Rsp)) (get_option s_op) (get_option s_addr);
           m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
         | _ -> ()
       end
