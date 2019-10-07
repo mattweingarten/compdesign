@@ -232,8 +232,6 @@ let step (m:mach) : unit =
       let d_op = get_dst os in
       let d_addr = get_dst ops in
       begin match oc with
-        | Negq -> 
-          ()
         (* Data movement instructions *)
         | Leaq ->
           begin match (List.hd os) with
