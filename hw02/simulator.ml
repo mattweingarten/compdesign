@@ -180,6 +180,7 @@ let get_addr a = get_option @@ map_addr a
    - set the condition flags
 *)
 let step (m:mach) : unit =
+  (*=== interpreters ===*)
   let interp_imm (i:imm) = (* interpret immediate *)
     begin match i with
       | Lit li -> li
@@ -197,6 +198,7 @@ let step (m:mach) : unit =
       | [] -> []
       | o::ops -> (interp_op o)::(get_ops ops)
     end in
+  (*=== data operations ===*)
   let rec store_sbytes (bytes:sbyte list) (addr:quad) = (* store sbytes at addr *)
     begin match bytes with
       | [] -> ()
@@ -249,8 +251,10 @@ let step (m:mach) : unit =
     let rsp_mem = int64_from_mem @@ interp_reg Rsp in
     store_res rsp_mem dop d;
     m.regs.(rind Rsp) <- Int64.add (interp_reg Rsp) 8L in
+  (*=== instruction fetching ===*)
   let instr = m.mem.(get_addr m.regs.(rind Rip)) in     (* current instruction *)
   m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L;  (* update rip to next instruction *)
+  (*=== instruction execution ===*)
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in     (* list of interpreted operands *)
@@ -259,7 +263,7 @@ let step (m:mach) : unit =
       let d_op = get_dst os in    (* dst operand *)
       let d_int = get_dst ops in  (* dst interpreted operand *)
       begin match oc with
-        (* Bit manipulation instructions *)
+        (*=== Bit manipulation instructions ===*)
         | Sarq -> 
           let amt = get_amt (get_option s_op) (get_option s_int) in
           let shifted = 
@@ -299,7 +303,7 @@ let step (m:mach) : unit =
           let cc_res = interp_cnd m.flags cc in
           let cc_int = if cc_res then 1L else 0L in
           set_LSB cc_int (get_option s_op) (get_option s_int)
-        (* Data movement instructions *)
+        (*=== Data movement instructions ===*)
         | Leaq ->
           begin match (List.hd os) with
             | Ind1 _ | Ind2 _ | Ind3 _ ->
@@ -309,7 +313,7 @@ let step (m:mach) : unit =
         | Movq -> store_res (get_option s_int) (get_option d_op) (get_option d_int)
         | Pushq -> push (get_option s_int) 
         | Popq -> pop (get_option s_op) (get_option s_int)
-        (* Control-flow instructions *)
+        (*=== Control-flow instructions ===*)
         | Cmpq -> 
           let open Int64_overflow in
           let s = sub (get_option d_int) (get_option s_int) in
