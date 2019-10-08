@@ -242,6 +242,12 @@ let step (m:mach) : unit =
       | _ -> raise @@ Invalid_argument "expected either imm or rcx"
     end in
   let set_flags (v:quad) = set_sign v; set_zero v in  (* set zero and sign flags given v *)
+  let get_val (op:operand option) (i:quad option) =
+    let op' = get_option op in
+    begin match op' with
+      | Imm _ | Reg _ -> get_option i
+      | _ -> int64_from_mem i
+    end in
   let instr = m.mem.(get_addr m.regs.(rind Rip)) in   (* current instruction *)
   begin match instr with
     | InsB0 (oc, os) ->
@@ -305,6 +311,12 @@ let step (m:mach) : unit =
         | Popq ->
           store_res (int64_of_sbytes @@ get_sbytes m.regs.(rind Rsp)) (get_option s_op) (get_option s_int);
           m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
+        (* Control-flow instructions *)
+        | Cmpq -> 
+          let open Int64_overflow in
+          let s = sub (get_option d_int) (get_option s_int) in
+          set_flags s.value;
+          m.flags.fo <- s.overflow
         | _ -> ()
       end
     | _ ->  m.regs.(rind Rip) <- exit_addr

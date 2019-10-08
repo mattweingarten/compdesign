@@ -45,6 +45,7 @@ RUN touch /root/.ocamlinit &&\
     echo "#thread;;" >> /root/.ocamlinit &&\
     echo "#require "'"'"core.top"'"'";;" >> /root/.ocamlinit &&\
     echo "#require "'"'"core.syntax"'"'";;" >> /root/.ocamlinit &&\
+    echo "#require "'"'"num"'"'";;" >> /root/.ocamlinit &&\
     echo "#mod_use "'"'"util/assert.ml"'"'";;" >> /root/.ocamlinit &&\
     echo "#mod_use "'"'"X86/x86.ml"'"'";;" >> /root/.ocamlinit
 
