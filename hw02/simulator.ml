@@ -281,7 +281,7 @@ let step (m:mach) : unit =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_right_logical (get_option d_int) amt
-              | _ -> Int64.shift_right_logical (int64_of_sbytes @@ get_sbytes @@ get_option d_int) amt
+              | _ -> Int64.shift_right_logical (int64_from_mem d_int) amt
             end in
           let msb = Int64.shift_right_logical shifted 63 in
           if amt = 1 then m.flags.fo <- if Int64.equal msb 1L then true else false 
