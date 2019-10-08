@@ -264,7 +264,18 @@ let step (m:mach) : unit =
           if amt = 1 && (Int64.equal top2 0L || Int64.equal top2 3L) then m.flags.fo <- true
           else if amt != 0 then set_flags shifted;
           store_res shifted (get_option d_op) (get_option d_int)
-        | Shrq -> failwith "shrq unimplemented"
+        | Shrq -> 
+          let amt = get_amt (get_option s_op) (get_option s_int) in
+          let shifted = 
+            let t = get_option d_op in
+            begin match t with
+              | Reg _ -> Int64.shift_right_logical (get_option d_int) amt
+              | _ -> Int64.shift_right_logical (int64_of_sbytes @@ get_sbytes @@ get_option d_int) amt
+            end in
+          let msb = Int64.shift_right_logical shifted 63 in
+          if amt = 1 then m.flags.fo <- if Int64.equal msb 1L then true else false 
+          else if amt != 0 then set_flags shifted;
+          store_res shifted (get_option d_op) (get_option d_int)
         | Set cc -> failwith "set unimplemented"
         (* Data movement instructions *)
         | Leaq ->
