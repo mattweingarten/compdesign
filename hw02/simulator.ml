@@ -255,14 +255,15 @@ let step (m:mach) : unit =
     let rsp_mem = int64_from_mem @@ interp_reg Rsp in
     store_res rsp_mem dop d;
     m.regs.(rind Rsp) <- Int64.add (interp_reg Rsp) 8L in
-  let instr = m.mem.(get_addr m.regs.(rind Rip)) in   (* current instruction *)
+  let instr = m.mem.(get_addr m.regs.(rind Rip)) in     (* current instruction *)
+  m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L;  (* update rip to next instruction *)
   begin match instr with
     | InsB0 (oc, os) ->
       let ops = get_ops os in     (* list of interpreted operands *)
       let s_op = get_src os in    (* source operand *)
-      let s_int = get_src ops in (* source interpreted operand *)
+      let s_int = get_src ops in  (* source interpreted operand *)
       let d_op = get_dst os in    (* dst operand *)
-      let d_int = get_dst ops in (* dst interpreted operand *)
+      let d_int = get_dst ops in  (* dst interpreted operand *)
       begin match oc with
         (* Bit manipulation instructions *)
         | Sarq -> 
@@ -326,12 +327,14 @@ let step (m:mach) : unit =
           push (interp_reg Rip);
           m.regs.(rind Rip) <- get_option s_int
         | Retq -> pop (Reg Rip) (interp_reg Rip)
+        | J cc -> 
+          (* next instructions will be implicitly set, explicit else would break intended behavior *)
+          if interp_cnd m.flags cc then m.regs.(rind Rip) <- (get_option s_int)
         | _ -> ()
       end
     | _ ->  m.regs.(rind Rip) <- exit_addr
 
-  end;
-  m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L  (* update rip to next instruction *)
+  end
 
 (*
       Movq | Pushq | Popq
