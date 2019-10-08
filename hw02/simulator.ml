@@ -223,11 +223,11 @@ let step (m:mach) : unit =
         m.mem.((get_addr d_int) + 7) <- byte 
     end in
   let get_sbytes (addr:quad) : sbyte list =  (* get 8 bytes memory location as sbytes list, to retrieve values from mem *) 
-    let rec helper addr acc = 
-      if acc < 8 then (m.mem.(get_addr addr))::(helper (Int64.succ addr) (acc + 1))
+    let rec helper a acc = 
+      if acc < 8 then (m.mem.(get_addr a))::(helper (Int64.succ a) (acc + 1))
       else [] in
     helper addr 0 in
-  let int64_from_mem addr = int64_of_sbytes @@ get_sbytes @@ get_option addr in   (* get int64 from mem (is option) *)
+  let int64_from_mem (addr:quad) = int64_of_sbytes @@ get_sbytes @@ addr in   (* get int64 from mem (is option) *)
   let set_zero (v:quad) =   (* set zero flag given v *)
     if Int64.equal v 0L then m.flags.fz <- true
     else m.flags.fz <- false in 
@@ -246,8 +246,15 @@ let step (m:mach) : unit =
     let op' = get_option op in
     begin match op' with
       | Imm _ | Reg _ -> get_option i
-      | _ -> int64_from_mem i
+      | _ -> int64_from_mem @@ get_option i
     end in
+  let push (s:quad) = 
+    m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
+    store_sbytes (sbytes_of_int64 s) m.regs.(rind Rsp) in
+  let pop (dop:operand) (d:quad) =
+    let rsp_mem = int64_from_mem @@ interp_reg Rsp in
+    store_res rsp_mem dop d;
+    m.regs.(rind Rsp) <- Int64.add (interp_reg Rsp) 8L in
   let instr = m.mem.(get_addr m.regs.(rind Rip)) in   (* current instruction *)
   begin match instr with
     | InsB0 (oc, os) ->
@@ -264,7 +271,7 @@ let step (m:mach) : unit =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_right (get_option d_int) amt
-              | _ -> Int64.shift_right (int64_from_mem d_int) amt
+              | _ -> Int64.shift_right (int64_from_mem @@ get_option d_int) amt
             end in
           if amt = 1 then m.flags.fo <- false
           else if amt != 0 then set_flags shifted;
@@ -275,7 +282,7 @@ let step (m:mach) : unit =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_left (get_option d_int) amt
-              | _ -> Int64.shift_left (int64_from_mem d_int) amt
+              | _ -> Int64.shift_left (int64_from_mem @@ get_option d_int) amt
             end in
           let top2 = Int64.shift_right_logical shifted 62 in 
           if amt = 1 && (Int64.equal top2 0L || Int64.equal top2 3L) then m.flags.fo <- true
@@ -287,7 +294,7 @@ let step (m:mach) : unit =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_right_logical (get_option d_int) amt
-              | _ -> Int64.shift_right_logical (int64_from_mem d_int) amt
+              | _ -> Int64.shift_right_logical (int64_from_mem @@ get_option d_int) amt
             end in
           let msb = Int64.shift_right_logical shifted 63 in
           if amt = 1 then m.flags.fo <- if Int64.equal msb 1L then true else false 
@@ -305,18 +312,20 @@ let step (m:mach) : unit =
             | _ -> raise @@ Invalid_argument "expected ind"
           end
         | Movq -> store_res (get_option s_int) (get_option d_op) (get_option d_int)
-        | Pushq -> 
-          m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
-          store_sbytes (sbytes_of_int64 @@ get_option s_int) m.regs.(rind Rsp)
-        | Popq ->
-          store_res (int64_of_sbytes @@ get_sbytes m.regs.(rind Rsp)) (get_option s_op) (get_option s_int);
-          m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
+        | Pushq -> push (get_option s_int) 
+        | Popq -> pop (get_option s_op) (get_option s_int)
         (* Control-flow instructions *)
         | Cmpq -> 
           let open Int64_overflow in
           let s = sub (get_option d_int) (get_option s_int) in
           set_flags s.value;
           m.flags.fo <- s.overflow
+        | Jmp ->
+          m.regs.(rind Rip) <- get_option s_int
+        | Callq ->
+          push (interp_reg Rip);
+          m.regs.(rind Rip) <- get_option s_int
+        | Retq -> pop (Reg Rip) (interp_reg Rip)
         | _ -> ()
       end
     | _ ->  m.regs.(rind Rip) <- exit_addr
