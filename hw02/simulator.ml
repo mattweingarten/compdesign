@@ -212,11 +212,22 @@ let step (m:mach) : unit =
         let res_sbytes = sbytes_of_int64 res in
         store_sbytes res_sbytes d_int
     end in 
+  let set_LSB (b:quad) (d_op) (d_int:quad) = 
+    begin match d_op with
+      | Reg reg -> 
+        let mask = Int64.logor 0xffffffffffffffffL b in
+        let r = Int64.logand mask d_int in
+        m.regs.(rind reg) <- r
+      | _ ->
+        let byte = Byte (Char.chr @@ Int64.to_int b) in
+        m.mem.((get_addr d_int) + 7) <- byte 
+    end in
   let get_sbytes (addr:quad) : sbyte list =  (* get 8 bytes memory location as sbytes list, to retrieve values from mem *) 
     let rec helper addr acc = 
       if acc < 8 then (m.mem.(get_addr addr))::(helper (Int64.succ addr) (acc + 1))
       else [] in
     helper addr 0 in
+  let int64_from_mem addr = int64_of_sbytes @@ get_sbytes @@ get_option addr in   (* get int64 from mem (is option) *)
   let set_zero (v:quad) =   (* set zero flag given v *)
     if Int64.equal v 0L then m.flags.fz <- true
     else m.flags.fz <- false in 
@@ -247,7 +258,7 @@ let step (m:mach) : unit =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_right (get_option d_int) amt
-              | _ -> Int64.shift_right (int64_of_sbytes @@ get_sbytes @@ get_option d_int) amt
+              | _ -> Int64.shift_right (int64_from_mem d_int) amt
             end in
           if amt = 1 then m.flags.fo <- false
           else if amt != 0 then set_flags shifted;
@@ -258,7 +269,7 @@ let step (m:mach) : unit =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_left (get_option d_int) amt
-              | _ -> Int64.shift_left (int64_of_sbytes @@ get_sbytes @@ get_option d_int) amt
+              | _ -> Int64.shift_left (int64_from_mem d_int) amt
             end in
           let top2 = Int64.shift_right_logical shifted 62 in 
           if amt = 1 && (Int64.equal top2 0L || Int64.equal top2 3L) then m.flags.fo <- true
@@ -276,7 +287,10 @@ let step (m:mach) : unit =
           if amt = 1 then m.flags.fo <- if Int64.equal msb 1L then true else false 
           else if amt != 0 then set_flags shifted;
           store_res shifted (get_option d_op) (get_option d_int)
-        | Set cc -> failwith "set unimplemented"
+        | Set cc -> 
+          let cc_res = interp_cnd m.flags cc in
+          let cc_int = if cc_res then 1L else 0L in
+          set_LSB cc_int (get_option s_op) (get_option s_int)
         (* Data movement instructions *)
         | Leaq ->
           begin match (List.hd os) with
