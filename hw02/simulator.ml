@@ -212,7 +212,7 @@ let step (m:mach) : unit =
         let res_sbytes = sbytes_of_int64 res in
         store_sbytes res_sbytes d_int
     end in 
-  let set_LSB (b:quad) (d_op) (d_int:quad) = 
+  let set_LSB (b:quad) (d_op) (d_int:quad) =  (* set the LSByte of d to b *)
     begin match d_op with
       | Reg reg -> 
         let mask = Int64.logor 0xffffffffffffffffL b in
@@ -235,23 +235,17 @@ let step (m:mach) : unit =
     let shifted = Int64.shift_right_logical v 63 in
     if Int64.equal shifted 1L then m.flags.fs <- true
     else m.flags.fs <- false in
-  let get_amt (op:operand) (v:quad)= 
+  let get_amt (op:operand) (v:quad) =   (* get amount for shifts (w/ check on valid operands) *)   
     let t = op in
     begin match t with 
       | Reg Rcx | Imm _ -> Int64.to_int v
       | _ -> raise @@ Invalid_argument "expected either imm or rcx"
     end in
   let set_flags (v:quad) = set_sign v; set_zero v in  (* set zero and sign flags given v *)
-  let get_val (op:operand option) (i:quad option) =
-    let op' = get_option op in
-    begin match op' with
-      | Imm _ | Reg _ -> get_option i
-      | _ -> int64_from_mem @@ get_option i
-    end in
-  let push (s:quad) = 
+  let push (s:quad) =   (* push s into stack *)
     m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
     store_sbytes (sbytes_of_int64 s) m.regs.(rind Rsp) in
-  let pop (dop:operand) (d:quad) =
+  let pop (dop:operand) (d:quad) =  (* pop from stack into d *)
     let rsp_mem = int64_from_mem @@ interp_reg Rsp in
     store_res rsp_mem dop d;
     m.regs.(rind Rsp) <- Int64.add (interp_reg Rsp) 8L in
