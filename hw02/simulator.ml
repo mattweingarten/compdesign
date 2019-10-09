@@ -549,31 +549,37 @@ exception Undefined_sym of lbl
 (* Assemble should raise this when a label is defined more than once *)
 exception Redefined_sym of lbl
 
-let is_data (e:elem) =
+(* wheter the given elem contains data *)
+let is_data (e:elem) =  
   begin match e.asm with
     | Data _ -> true
     | _ -> false
   end
 
+(* return the list without tail *)
 let rec but_tail (l:'a list) = 
   begin match l with
     | [x] -> []
     | x::xs -> x::(but_tail xs)
   end
 
+(* get the size of a data segment *)
 let size_of_data (d:data) = 
   begin match d with
     | Asciz s -> 1 + (String.length s)
     | Quad _ -> 8
   end 
 
+(* get size of an asm *)
 let size_of_asm (a:asm) = 
   begin match a with
     | Text xs -> 8 * (List.length xs)
     | Data xs -> List.fold_left (fun acc d -> acc + (size_of_data d)) 0 xs
   end
 
+(* get total size of a list of elements *)
 let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (size_of_asm e.asm)) 0 es 
+
 (* Convert an X86 program into an object file:
    - separate the text and data segments
    - compute the size of each segment
@@ -598,7 +604,7 @@ let assemble (p:prog) : exec =
   {
     entry = Int64.zero;
     text_pos = mem_bot;  
-    data_pos = mem_bot + text_size;
+    data_pos = Int64.add mem_bot (Int64.of_int text_size);
     text_seg = [];
     data_seg = [];
   }
