@@ -172,6 +172,38 @@ let get_dst l = List.nth_opt l 1
 (* map addr and extract option *)
 let get_addr a = get_option @@ map_addr a
 
+let get_map_addr (addr:quad) :int =
+  get_option @@ map_addr addr
+
+let head (l:'a list) :'a =
+  begin match l with
+    | [x;_] -> x
+    | _ -> raise (Failure "Problem with getting operands from operandslist in head")
+  end
+
+
+let rec tail (l:'a list) :'a =
+  begin match l with
+    | [x] -> x
+    | x::xs -> tail xs
+    | _ -> raise (Failure "Problem with getting operands from operandslist in tail")
+  end
+
+
+let get_src_operand (l:'a list) :'a =
+  begin match l with
+    | [x;_] -> x
+    | _ -> raise (Failure "Problem with getting operands from operandslist in get_src_operand")
+  end
+
+
+let get_dest_operand (l:'a list) :'a =
+  begin match l with
+    | [_;x] -> x
+    | _ -> raise (Failure "Problem with getting operands from operandslist in get_dest_operand")
+  end
+
+
 (* Simulates one step of the machine:
    - fetch the instruction at %rip
    - compute the source and/or destination information from the operands
@@ -253,6 +285,145 @@ let step (m:mach) : unit =
     m.regs.(rind Rsp) <- Int64.add (interp_reg Rsp) 8L in
   (*=== instruction fetching ===*)
   let instr = m.mem.(get_addr m.regs.(rind Rip)) in     (* current instruction *)
+
+
+  let interp_imm (i:imm) =
+    begin match i with
+      | Lit li -> li
+      | Lbl lb -> raise @@ Invalid_argument "lbl not resolved"
+    end in
+  let interp_reg (r:reg) :int64= m.regs.(rind r) in
+
+  let get_reg_from_operand(operand:operand) :reg =
+    begin match operand with
+      | Reg r -> r
+      | _ -> raise(Failure "Mistake with get_reg_from_operand")
+    end
+  in
+
+  let get_reg = interp_reg in
+  let set_reg (r:reg) (new_value:Int64_overflow.t) :unit= (m.regs).(rind r) <- new_value.value in
+  let set_reg2 (r:reg) (new_value:int64) :unit= (m.regs).(rind r) <- new_value in
+
+  let rec insert_sbyte_list_in_mem (addr:int64) (l:sbyte list) :unit =
+    begin match l with
+      | sbyte::sbytelist -> m.mem.(get_map_addr addr) <- sbyte; insert_sbyte_list_in_mem (Int64.add addr Int64.one) sbytelist
+      | _ -> ()
+    end
+  in
+  let set_mem (operand:operand) (new_value:Int64_overflow.t) :unit =
+    let sbyte_list = sbytes_of_int64 new_value.value in
+    begin match operand with
+      | Ind1 i-> insert_sbyte_list_in_mem (interp_imm i) sbyte_list
+      | Ind2 r-> insert_sbyte_list_in_mem (interp_reg r) sbyte_list
+      | Ind3 (i,r)-> insert_sbyte_list_in_mem (Int64.add (interp_reg r) (interp_imm i)) sbyte_list
+      | _ -> raise(Failure "Tried to set memory without memory address")
+    end
+  in
+  let set_dest (operand:operand) (new_value:Int64_overflow.t) :unit =
+    begin match operand with
+      | Reg r -> set_reg r new_value
+      | operand -> set_mem operand new_value
+    end
+  in
+
+  let interp_op (op:operand) : quad =
+    begin match op with
+      | Imm i -> interp_imm i
+      | Reg r -> interp_reg r
+      | Ind1 i -> int64_of_sbytes [m.mem.(get_map_addr @@ interp_imm i)]
+      | Ind2 r -> int64_of_sbytes [m.mem.(get_map_addr @@ interp_reg r)]
+      | Ind3 (i, r) -> int64_of_sbytes [m.mem.(get_map_addr @@ Int64.add (interp_reg r) (interp_imm i))]
+    end in
+
+
+  let get_bin_operation (op:opcode) =
+    begin match op with
+      | Addq -> Int64_overflow.add
+      | Subq -> Int64_overflow.sub
+      | Imulq -> Int64_overflow.mul
+      |_ -> raise(Failure "Looked for operation in wrong category")
+    end
+  in
+
+
+  let get_un_operation (op:opcode) =
+    begin match op with
+      | Negq -> Int64_overflow.neg
+      | Incq -> Int64_overflow.succ
+      | Decq -> Int64_overflow.pred
+      |_ -> raise(Failure "Looked for operation in wrong category")
+    end
+  in
+
+
+
+
+  let set_flags2 (result:Int64_overflow.t) :unit =
+    let set_flag_overflow () :unit =  m.flags.fo <- result.overflow in
+    let set_flag_zero () :unit = m.flags.fz <- (result.value = Int64.zero) in
+    let set_flag_sign () :unit = if((compare Int64.zero result.value) >= 0) then m.flags.fs <- true 
+      else m.flags.fs <- false in
+    set_flag_overflow (); set_flags result.value
+  in
+
+  let bin_arith_instr (op:opcode) (operands:operand list) : unit=
+    let dest_operand = tail operands in
+    let dest = interp_op dest_operand in
+    let src = interp_op @@ head operands in
+    let result = get_bin_operation op dest src in
+    set_dest dest_operand result; set_flags2 result
+  in
+
+  let un_arith_instr (op:opcode) (operands:operand list) : unit=
+    let dest_operand = tail operands in
+    let src = interp_op dest_operand in
+    let result = get_un_operation op src in
+    set_dest dest_operand result; set_flags2 result
+  in
+
+
+
+
+  let get_sbyte (addr:quad) : sbyte =
+    let index = map_addr addr in
+    begin match index with
+      | Some x ->(m.mem).(x)
+      | None -> raise(Not_found)
+    end
+  in
+
+
+  let get_bin_logic_op (op:opcode) =
+    begin match op with
+      | Andq -> Int64.logand
+      | Orq -> Int64.logor
+      | Xorq -> Int64.logxor
+      | _ -> raise(Failure "looking for non logic op in logic")
+    end
+  in
+
+
+  let set_of_to_zero () :unit =
+    m.flags.fo <- false
+  in
+  let notq_instr (op:opcode) (operands:operand list) :unit =
+    let src = get_src_operand operands in
+    let dest = src in
+    let result = Int64_overflow.ok @@ interp_op src in
+    set_dest dest result; set_flags result.value; set_of_to_zero ()
+  in
+
+  let bin_logic_instr (op:opcode) (operands:operand list) :unit =
+    let operation = get_bin_logic_op op in
+    let src = get_src_operand  operands in
+    let dest = get_dest_operand operands in
+    let result = Int64_overflow.ok @@ operation (interp_op dest) (interp_op src) in
+    set_dest dest result; set_flags result.value; set_of_to_zero ()
+  in
+
+
+
   m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L;  (* update rip to next instruction *)
   (*=== instruction execution ===*)
   begin match instr with
@@ -263,6 +434,17 @@ let step (m:mach) : unit =
       let d_op = get_dst os in    (* dst operand *)
       let d_int = get_dst ops in  (* dst interpreted operand *)
       begin match oc with
+        | Addq -> bin_arith_instr Addq os
+        | Subq -> bin_arith_instr Subq os 
+        | Imulq -> bin_arith_instr Imulq os
+        | Negq -> un_arith_instr Negq os
+        | Incq -> un_arith_instr Incq os
+        | Decq -> un_arith_instr Decq os
+        | Notq -> notq_instr Notq os
+        | Andq -> bin_logic_instr Andq os
+        | Orq -> bin_logic_instr Orq os
+        | Xorq -> bin_logic_instr Xorq os
+
         (*=== Bit manipulation instructions ===*)
         | Sarq -> 
           let amt = get_amt (get_option s_op) (get_option s_int) in
