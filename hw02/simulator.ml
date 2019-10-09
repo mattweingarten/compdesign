@@ -549,6 +549,31 @@ exception Undefined_sym of lbl
 (* Assemble should raise this when a label is defined more than once *)
 exception Redefined_sym of lbl
 
+let is_data (e:elem) =
+  begin match e.asm with
+    | Data _ -> true
+    | _ -> false
+  end
+
+let rec but_tail (l:'a list) = 
+  begin match l with
+    | [x] -> []
+    | x::xs -> x::(but_tail xs)
+  end
+
+let size_of_data (d:data) = 
+  begin match d with
+    | Asciz s -> 1 + (String.length s)
+    | Quad _ -> 8
+  end 
+
+let size_of_asm (a:asm) = 
+  begin match a with
+    | Text xs -> 8 * (List.length xs)
+    | Data xs -> List.fold_left (fun acc d -> acc + (size_of_data d)) 0 xs
+  end
+
+let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (size_of_asm e.asm)) 0 es 
 (* Convert an X86 program into an object file:
    - separate the text and data segments
    - compute the size of each segment
@@ -563,7 +588,20 @@ exception Redefined_sym of lbl
    HINT: List.fold_left and List.fold_right are your friends.
 *)
 let assemble (p:prog) : exec =
-  failwith "assemble unimplemented"
+  let n_elem = List.length p in
+  let last_elem = List.nth p (n_elem - 1) in
+  let text_prog = if is_data last_elem then but_tail p else p in
+  let data_prog = if is_data last_elem then [last_elem] else [] in
+  let text_size = size_of_elems text_prog in
+  let data_size = size_of_elems data_prog in
+
+  {
+    entry = Int64.zero;
+    text_pos = mem_bot;  
+    data_pos = mem_bot + text_size;
+    text_seg = [];
+    data_seg = [];
+  }
 
 (* Convert an object file into an executable machine state.
    - allocate the mem array
