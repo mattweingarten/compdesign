@@ -550,17 +550,27 @@ exception Undefined_sym of lbl
 exception Redefined_sym of lbl
 
 (* wheter the given elem contains data *)
-let is_data (e:elem) =  
-  begin match e.asm with
+let is_data (a:asm) =
+  begin match a with
     | Data _ -> true
     | _ -> false
   end
+
+let is_same_type (a:asm) (e:elem) = (is_data a) = (is_data e.asm)
 
 (* return the list without tail *)
 let rec but_tail (l:'a list) = 
   begin match l with
     | [x] -> []
     | x::xs -> x::(but_tail xs)
+  end
+
+let rec extract_type (t:asm) (p:prog) =
+  begin match p with 
+    | [] -> []
+    | x::xs ->
+      if is_same_type t x then x::(extract_type t xs)
+      else extract_type t xs
   end
 
 (* get the size of a data segment *)
@@ -576,6 +586,8 @@ let size_of_asm (a:asm) =
     | Text xs -> 8 * (List.length xs)
     | Data xs -> List.fold_left (fun acc d -> acc + (size_of_data d)) 0 xs
   end
+
+let rec lbl_val (lbl:string) (data:prog) = 1
 
 (* get total size of a list of elements *)
 let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (size_of_asm e.asm)) 0 es 
@@ -594,17 +606,14 @@ let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (siz
    HINT: List.fold_left and List.fold_right are your friends.
 *)
 let assemble (p:prog) : exec =
-  let n_elem = List.length p in
-  let last_elem = List.nth p (n_elem - 1) in
-  let text_prog = if is_data last_elem then but_tail p else p in
-  let data_prog = if is_data last_elem then [last_elem] else [] in
+  let text_prog = extract_type (Text []) p in
+  let data_prog = extract_type (Data []) p in
   let text_size = size_of_elems text_prog in
   let data_size = size_of_elems data_prog in
-
   {
     entry = Int64.zero;
     text_pos = mem_bot;  
-    data_pos = Int64.add mem_bot (Int64.of_int text_size);
+    data_pos = Int64.add mem_bot (Int64.of_int (text_size));
     text_seg = [];
     data_seg = [];
   }
