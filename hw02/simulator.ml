@@ -565,6 +565,7 @@ let rec but_tail (l:'a list) =
     | x::xs -> x::(but_tail xs)
   end
 
+(* extract all the elems of type t from p *)
 let rec extract_type (t:asm) (p:prog) =
   begin match p with 
     | [] -> []
@@ -587,10 +588,85 @@ let size_of_asm (a:asm) =
     | Data xs -> List.fold_left (fun acc d -> acc + (size_of_data d)) 0 xs
   end
 
-let rec lbl_val (lbl:string) (data:prog) = 1
-
 (* get total size of a list of elements *)
 let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (size_of_asm e.asm)) 0 es 
+
+(* count the occurrences of lbl definition *)
+let rec count_occurrences (lbl:string) (d:prog)  =
+  begin match d with
+    | [] -> 0
+    | x::xs -> if x.lbl = lbl then 1 + count_occurrences lbl xs
+      else count_occurrences lbl xs
+  end
+
+(* compute the offset of the label declaration of lbl in the elem list (considering size) *)
+let rec lbl_offset (lbl:string) (p:prog) =
+  let rec helper (p':prog) (acc:int) = 
+    begin match p' with 
+      | [] -> raise @@ Undefined_sym lbl
+      | x::xs -> 
+        if x.lbl = lbl then 0
+        else (size_of_asm x.asm) + (helper xs acc)
+    end in
+  helper p 0
+
+(* get the full address of a label declaration in prog p *) 
+let lbl_addr (lbl:string) (p:prog) = 
+  let occs = count_occurrences lbl p in (* for sanity check *)
+  if occs = 0 then raise @@ Undefined_sym lbl
+  else if occs > 1 then raise @@ Redefined_sym lbl
+  else Int64.add (Int64.of_int @@ lbl_offset lbl p) mem_bot
+
+(* find the label_to_address mapping in the list of mappings *) 
+let rec get_lbl_addr (lbl:string) res = 
+  begin match res with
+    | [] -> raise @@ Undefined_sym lbl
+    | (x,y)::xs -> if lbl = x then y else get_lbl_addr lbl xs
+  end
+
+(* get the literal declaration of an addr *)
+let get_lit (l:string) (res:(string*quad) list) = Lit (get_lbl_addr l res)
+
+(* traverse a list of operands and substitute labels with their address in mem *)
+let rec traverse_ops (ops:operand list) (res:(string*quad) list) : operand list= 
+  begin match ops with
+    | [] -> []
+    | (Imm (Lbl l))::xs -> (Imm (get_lit l res))::(traverse_ops xs res)
+    | (Ind1 (Lbl l))::xs -> (Ind1 (get_lit l res))::(traverse_ops xs res)
+    | (Ind3 (Lbl l, r))::xs -> (Ind3 (get_lit l res, r))::(traverse_ops xs res)
+    | x::xs -> x::(traverse_ops xs res)
+  end
+
+(* traverse a list of instructions and substitute labels with their address in mem *)
+let rec traverse_ins (i:ins list) (res:(string*quad) list) : ins list = List.map (fun (opcode, ops) -> (opcode, traverse_ops ops res)) i  
+
+(* traverse a list of data and substitute labels with their address in mem *)
+let rec traverse_data (d:data list) (res:(string*quad) list) : data list= 
+  begin match d with
+    | [] -> []
+    | (Quad (Lbl l))::xs -> (Quad (Lit (get_lbl_addr l res)))::(traverse_data xs res)
+    | x::xs -> x::(traverse_data xs res)
+  end
+
+(* traverse an asm and substitute labels with their address in mem *)
+let rec traverse_asm (a:asm) (res:(string*quad) list) : asm = 
+  begin match a with
+    | (Text x) -> (Text (traverse_ins x res))
+    | (Data x) -> (Data (traverse_data x res))
+  end
+
+(* resolve all the labels in a program *)
+let rec resolve_lbls (p:prog) (res:(string*quad) list) = List.map (fun (e:elem) -> (traverse_asm e.asm res)) p
+
+(* get the mappings to memory of labels in a program *)
+let rec get_lbl_addrs (p:prog) = List.map (fun (e:elem) -> (e.lbl, (lbl_addr e.lbl p))) p
+
+(* get the sbyte list of an asm *)
+let sbytes_of_asm (a:asm) = 
+  begin match a with
+    | Text x -> List.fold_left (fun acc ins -> List.append acc (sbytes_of_ins ins)) [] x
+    | Data x -> List.fold_left (fun acc data -> List.append acc (sbytes_of_data data)) [] x
+  end
 
 (* Convert an X86 program into an object file:
    - separate the text and data segments
@@ -606,16 +682,29 @@ let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (siz
    HINT: List.fold_left and List.fold_right are your friends.
 *)
 let assemble (p:prog) : exec =
-  let text_prog = extract_type (Text []) p in
+  (* split text and data progs *)
+  let text_prog = extract_type (Text []) p in 
   let data_prog = extract_type (Data []) p in
+  (* get sizes of text and data *)
   let text_size = size_of_elems text_prog in
   let data_size = size_of_elems data_prog in
+  (* get start address of data in mem *)
+  let d_pos = Int64.add mem_bot (Int64.of_int (text_size)) in
+  (* get labels_to_mem mappings *)
+  let addresses = get_lbl_addrs p in
+  (* patch instructions with resolved addresses *)
+  let text_res = resolve_lbls text_prog addresses in
+  let data_res = resolve_lbls data_prog addresses in
+  (* convert segments to sbyte lists *)
+  let text_seg = List.fold_left (fun acc elem -> List.append acc (sbytes_of_asm elem)) [] text_res in
+  let data_seg = List.fold_left (fun acc elem -> List.append acc (sbytes_of_asm elem)) [] data_res in
+  (* declare exex *)
   {
-    entry = Int64.zero;
+    entry = (get_lbl_addr "main" addresses);
     text_pos = mem_bot;  
-    data_pos = Int64.add mem_bot (Int64.of_int (text_size));
-    text_seg = [];
-    data_seg = [];
+    data_pos = d_pos;
+    text_seg = text_seg;
+    data_seg = data_seg;
   }
 
 (* Convert an object file into an executable machine state.
