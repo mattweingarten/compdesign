@@ -245,33 +245,33 @@ let step (m:mach) : unit =
       | _ ->
         let res_sbytes = sbytes_of_int64 res in
         store_sbytes res_sbytes d_int
-    end in 
+    end in
   let set_LSB (b:quad) (d_op) (d_int:quad) =  (* set the LSByte of d to b *)
     begin match d_op with
-      | Reg reg -> 
+      | Reg reg ->
         let mask = Int64.logor 0xffffffffffffffffL b in
         let r = Int64.logand mask d_int in
         m.regs.(rind reg) <- r
       | _ ->
         let byte = Byte (Char.chr @@ Int64.to_int b) in
-        m.mem.((get_addr d_int) + 7) <- byte 
+        m.mem.((get_addr d_int) + 7) <- byte
     end in
-  let get_sbytes (addr:quad) : sbyte list =  (* get 8 bytes memory location as sbytes list, to retrieve values from mem *) 
-    let rec helper a acc = 
+  let get_sbytes (addr:quad) : sbyte list =  (* get 8 bytes memory location as sbytes list, to retrieve values from mem *)
+    let rec helper a acc =
       if acc < 8 then (m.mem.(get_addr a))::(helper (Int64.succ a) (acc + 1))
       else [] in
     helper addr 0 in
   let int64_from_mem (addr:quad) = int64_of_sbytes @@ get_sbytes @@ addr in   (* get int64 from mem (is option) *)
   let set_zero (v:quad) =   (* set zero flag given v *)
     if Int64.equal v 0L then m.flags.fz <- true
-    else m.flags.fz <- false in 
+    else m.flags.fz <- false in
   let set_sign (v:quad) =   (* set sign flag given v *)
     let shifted = Int64.shift_right_logical v 63 in
     if Int64.equal shifted 1L then m.flags.fs <- true
     else m.flags.fs <- false in
-  let get_amt (op:operand) (v:quad) =   (* get amount for shifts (w/ check on valid operands) *)   
+  let get_amt (op:operand) (v:quad) =   (* get amount for shifts (w/ check on valid operands) *)
     let t = op in
-    begin match t with 
+    begin match t with
       | Reg Rcx | Imm _ -> Int64.to_int v
       | _ -> raise @@ Invalid_argument "expected either imm or rcx"
     end in
@@ -362,7 +362,7 @@ let step (m:mach) : unit =
   let set_flags2 (result:Int64_overflow.t) :unit =
     let set_flag_overflow () :unit =  m.flags.fo <- result.overflow in
     let set_flag_zero () :unit = m.flags.fz <- (result.value = Int64.zero) in
-    let set_flag_sign () :unit = if((compare Int64.zero result.value) >= 0) then m.flags.fs <- true 
+    let set_flag_sign () :unit = if((compare Int64.zero result.value) >= 0) then m.flags.fs <- true
       else m.flags.fs <- false in
     set_flag_overflow (); set_flags result.value
   in
@@ -435,7 +435,7 @@ let step (m:mach) : unit =
       let d_int = get_dst ops in  (* dst interpreted operand *)
       begin match oc with
         | Addq -> bin_arith_instr Addq os
-        | Subq -> bin_arith_instr Subq os 
+        | Subq -> bin_arith_instr Subq os
         | Imulq -> bin_arith_instr Imulq os
         | Negq -> un_arith_instr Negq os
         | Incq -> un_arith_instr Incq os
@@ -446,9 +446,9 @@ let step (m:mach) : unit =
         | Xorq -> bin_logic_instr Xorq os
 
         (*=== Bit manipulation instructions ===*)
-        | Sarq -> 
+        | Sarq ->
           let amt = get_amt (get_option s_op) (get_option s_int) in
-          let shifted = 
+          let shifted =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_right (get_option d_int) amt
@@ -457,31 +457,31 @@ let step (m:mach) : unit =
           if amt = 1 then m.flags.fo <- false
           else if amt != 0 then set_flags shifted;
           store_res shifted (get_option d_op) (get_option d_int)
-        | Shlq -> 
+        | Shlq ->
           let amt = get_amt (get_option s_op) (get_option s_int) in
-          let shifted = 
+          let shifted =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_left (get_option d_int) amt
               | _ -> Int64.shift_left (int64_from_mem @@ get_option d_int) amt
             end in
-          let top2 = Int64.shift_right_logical shifted 62 in 
+          let top2 = Int64.shift_right_logical shifted 62 in
           if amt = 1 && (Int64.equal top2 0L || Int64.equal top2 3L) then m.flags.fo <- true
           else if amt != 0 then set_flags shifted;
           store_res shifted (get_option d_op) (get_option d_int)
-        | Shrq -> 
+        | Shrq ->
           let amt = get_amt (get_option s_op) (get_option s_int) in
-          let shifted = 
+          let shifted =
             let t = get_option d_op in
             begin match t with
               | Reg _ -> Int64.shift_right_logical (get_option d_int) amt
               | _ -> Int64.shift_right_logical (int64_from_mem @@ get_option d_int) amt
             end in
           let msb = Int64.shift_right_logical shifted 63 in
-          if amt = 1 then m.flags.fo <- if Int64.equal msb 1L then true else false 
+          if amt = 1 then m.flags.fo <- if Int64.equal msb 1L then true else false
           else if amt != 0 then set_flags shifted;
           store_res shifted (get_option d_op) (get_option d_int)
-        | Set cc -> 
+        | Set cc ->
           let cc_res = interp_cnd m.flags cc in
           let cc_int = if cc_res then 1L else 0L in
           set_LSB cc_int (get_option s_op) (get_option s_int)
@@ -493,10 +493,10 @@ let step (m:mach) : unit =
             | _ -> raise @@ Invalid_argument "expected ind"
           end
         | Movq -> store_res (get_option s_int) (get_option d_op) (get_option d_int)
-        | Pushq -> push (get_option s_int) 
+        | Pushq -> push (get_option s_int)
         | Popq -> pop (get_option s_op) (get_option s_int)
         (*=== Control-flow instructions ===*)
-        | Cmpq -> 
+        | Cmpq ->
           let open Int64_overflow in
           let s = sub (get_option d_int) (get_option s_int) in
           set_flags s.value;
@@ -507,7 +507,7 @@ let step (m:mach) : unit =
           push (interp_reg Rip);
           m.regs.(rind Rip) <- get_option s_int
         | Retq -> pop (Reg Rip) (interp_reg Rip)
-        | J cc -> 
+        | J cc ->
           (* next instructions will be implicitly set, explicit else would break intended behavior *)
           if interp_cnd m.flags cc then m.regs.(rind Rip) <- (get_option s_int)
         | _ -> ()
@@ -559,7 +559,7 @@ let is_data (a:asm) =
 let is_same_type (a:asm) (e:elem) = (is_data a) = (is_data e.asm)
 
 (* return the list without tail *)
-let rec but_tail (l:'a list) = 
+let rec but_tail (l:'a list) =
   begin match l with
     | [x] -> []
     | x::xs -> x::(but_tail xs)
@@ -567,7 +567,7 @@ let rec but_tail (l:'a list) =
 
 (* extract all the elems of type t from p *)
 let rec extract_type (t:asm) (p:prog) =
-  begin match p with 
+  begin match p with
     | [] -> []
     | x::xs ->
       if is_same_type t x then x::(extract_type t xs)
@@ -575,21 +575,21 @@ let rec extract_type (t:asm) (p:prog) =
   end
 
 (* get the size of a data segment *)
-let size_of_data (d:data) = 
+let size_of_data (d:data) =
   begin match d with
     | Asciz s -> 1 + (String.length s)
     | Quad _ -> 8
-  end 
+  end
 
 (* get size of an asm *)
-let size_of_asm (a:asm) = 
+let size_of_asm (a:asm) =
   begin match a with
     | Text xs -> 8 * (List.length xs)
     | Data xs -> List.fold_left (fun acc d -> acc + (size_of_data d)) 0 xs
   end
 
 (* get total size of a list of elements *)
-let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (size_of_asm e.asm)) 0 es 
+let size_of_elems (es:elem list) : int = List.fold_left (fun acc e -> acc + (size_of_asm e.asm)) 0 es
 
 (* count the occurrences of lbl definition *)
 let rec count_occurrences (lbl:string) (d:prog)  =
@@ -601,24 +601,24 @@ let rec count_occurrences (lbl:string) (d:prog)  =
 
 (* compute the offset of the label declaration of lbl in the elem list (considering size) *)
 let rec lbl_offset (lbl:string) (p:prog) =
-  let rec helper (p':prog) (acc:int) = 
-    begin match p' with 
+  let rec helper (p':prog) (acc:int) =
+    begin match p' with
       | [] -> raise @@ Undefined_sym lbl
-      | x::xs -> 
+      | x::xs ->
         if x.lbl = lbl then 0
         else (size_of_asm x.asm) + (helper xs acc)
     end in
   helper p 0
 
-(* get the full address of a label declaration in prog p *) 
-let lbl_addr (lbl:string) (p:prog) = 
+(* get the full address of a label declaration in prog p *)
+let lbl_addr (lbl:string) (p:prog) =
   let occs = count_occurrences lbl p in (* for sanity check *)
   if occs = 0 then raise @@ Undefined_sym lbl
   else if occs > 1 then raise @@ Redefined_sym lbl
   else Int64.add (Int64.of_int @@ lbl_offset lbl p) mem_bot
 
-(* find the label_to_address mapping in the list of mappings *) 
-let rec get_lbl_addr (lbl:string) res = 
+(* find the label_to_address mapping in the list of mappings *)
+let rec get_lbl_addr (lbl:string) res =
   begin match res with
     | [] -> raise @@ Undefined_sym lbl
     | (x,y)::xs -> if lbl = x then y else get_lbl_addr lbl xs
@@ -628,7 +628,7 @@ let rec get_lbl_addr (lbl:string) res =
 let get_lit (l:string) (res:(string*quad) list) = Lit (get_lbl_addr l res)
 
 (* traverse a list of operands and substitute labels with their address in mem *)
-let rec traverse_ops (ops:operand list) (res:(string*quad) list) : operand list= 
+let rec traverse_ops (ops:operand list) (res:(string*quad) list) : operand list=
   begin match ops with
     | [] -> []
     | (Imm (Lbl l))::xs -> (Imm (get_lit l res))::(traverse_ops xs res)
@@ -638,10 +638,10 @@ let rec traverse_ops (ops:operand list) (res:(string*quad) list) : operand list=
   end
 
 (* traverse a list of instructions and substitute labels with their address in mem *)
-let rec traverse_ins (i:ins list) (res:(string*quad) list) : ins list = List.map (fun (opcode, ops) -> (opcode, traverse_ops ops res)) i  
+let rec traverse_ins (i:ins list) (res:(string*quad) list) : ins list = List.map (fun (opcode, ops) -> (opcode, traverse_ops ops res)) i
 
 (* traverse a list of data and substitute labels with their address in mem *)
-let rec traverse_data (d:data list) (res:(string*quad) list) : data list= 
+let rec traverse_data (d:data list) (res:(string*quad) list) : data list=
   begin match d with
     | [] -> []
     | (Quad (Lbl l))::xs -> (Quad (Lit (get_lbl_addr l res)))::(traverse_data xs res)
@@ -649,7 +649,7 @@ let rec traverse_data (d:data list) (res:(string*quad) list) : data list=
   end
 
 (* traverse an asm and substitute labels with their address in mem *)
-let rec traverse_asm (a:asm) (res:(string*quad) list) : asm = 
+let rec traverse_asm (a:asm) (res:(string*quad) list) : asm =
   begin match a with
     | (Text x) -> (Text (traverse_ins x res))
     | (Data x) -> (Data (traverse_data x res))
@@ -662,7 +662,7 @@ let rec resolve_lbls (p:prog) (res:(string*quad) list) = List.map (fun (e:elem) 
 let rec get_lbl_addrs (p:prog) = List.map (fun (e:elem) -> (e.lbl, (lbl_addr e.lbl p))) p
 
 (* get the sbyte list of an asm *)
-let sbytes_of_asm (a:asm) = 
+let sbytes_of_asm (a:asm) =
   begin match a with
     | Text x -> List.fold_left (fun acc ins -> List.append acc (sbytes_of_ins ins)) [] x
     | Data x -> List.fold_left (fun acc data -> List.append acc (sbytes_of_data data)) [] x
@@ -683,7 +683,7 @@ let sbytes_of_asm (a:asm) =
 *)
 let assemble (p:prog) : exec =
   (* split text and data progs *)
-  let text_prog = extract_type (Text []) p in 
+  let text_prog = extract_type (Text []) p in
   let data_prog = extract_type (Data []) p in
   (* get sizes of text and data *)
   let text_size = size_of_elems text_prog in
@@ -701,14 +701,14 @@ let assemble (p:prog) : exec =
   (* declare exex *)
   {
     entry = (get_lbl_addr "main" addresses);
-    text_pos = mem_bot;  
+    text_pos = mem_bot;
     data_pos = d_pos;
     text_seg = text_seg;
     data_seg = data_seg;
   }
 
 (* copy sbytes l to mem at address addr*)
-let blit_to_mem (l:sbyte list) (addr:quad) mem = 
+let blit_to_mem (l:sbyte list) (addr:quad) mem =
   Array.blit (Array.of_list l) 0 mem (get_addr addr) (List.length l)
 
 (* Convert an object file into an executable machine state.
