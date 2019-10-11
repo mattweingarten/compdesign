@@ -707,6 +707,9 @@ let assemble (p:prog) : exec =
     data_seg = data_seg;
   }
 
+let blit_to_mem (l:sbyte list) (addr:quad) mem = 
+  Array.blit (Array.of_list l) 0 mem (get_addr addr) (List.length l)
+
 (* Convert an object file into an executable machine state.
    - allocate the mem array
    - set up the memory state by writing the symbolic bytes to the
@@ -721,4 +724,16 @@ let assemble (p:prog) : exec =
    may be of use.
 *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
-  failwith "load unimplemented"
+  let mem = Array.make mem_size (Byte '\x00') in
+  let regs = Array.make nregs (Int64.zero) in
+  let sbytes_of_exit = sbytes_of_int64 exit_addr in
+  blit_to_mem text_seg text_pos mem;
+  blit_to_mem data_seg data_pos mem;
+  blit_to_mem sbytes_of_exit (Int64.sub mem_top 8L) mem;
+  regs.(rind Rip) <- entry;
+  regs.(rind Rsp) <- (Int64.sub mem_top 8L);
+  {
+    flags = {fo=false; fs=false; fz=false};
+    regs = regs;
+    mem = mem;
+  }
