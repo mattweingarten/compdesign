@@ -707,6 +707,7 @@ let assemble (p:prog) : exec =
     data_seg = data_seg;
   }
 
+(* copy sbytes l to mem at address addr*)
 let blit_to_mem (l:sbyte list) (addr:quad) mem = 
   Array.blit (Array.of_list l) 0 mem (get_addr addr) (List.length l)
 
@@ -724,12 +725,17 @@ let blit_to_mem (l:sbyte list) (addr:quad) mem =
    may be of use.
 *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
+  (* allocate mem *)
   let mem = Array.make mem_size (Byte '\x00') in
+  (* allocate regs *)
   let regs = Array.make nregs (Int64.zero) in
+  (* convert exit_addr to sbytes *)
   let sbytes_of_exit = sbytes_of_int64 exit_addr in
+  (* setup initial memory state *)
   blit_to_mem text_seg text_pos mem;
   blit_to_mem data_seg data_pos mem;
   blit_to_mem sbytes_of_exit (Int64.sub mem_top 8L) mem;
+  (* setup initial reg state *)
   regs.(rind Rip) <- entry;
   regs.(rind Rsp) <- (Int64.sub mem_top 8L);
   {
