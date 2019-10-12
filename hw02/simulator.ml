@@ -184,34 +184,6 @@ let get_addr (addr:quad) : int = get_option @@ map_addr addr
 let get_map_addr (addr:quad) :int =
   get_option @@ map_addr addr
 
-let head (l:'a list) :'a =
-  begin match l with
-    | [x;_] -> x
-    | _ -> raise (Failure "Problem with getting operands from operandslist in head")
-  end
-
-
-let rec tail (l:'a list) :'a =
-  begin match l with
-    | [x] -> x
-    | x::xs -> tail xs
-    | _ -> raise (Failure "Problem with getting operands from operandslist in tail")
-  end
-
-
-let get_src_operand (l:'a list) :'a =
-  begin match l with
-    | [x;_] -> x
-    | _ -> raise (Failure "Problem with getting operands from operandslist in get_src_operand")
-  end
-
-
-let get_dest_operand (l:'a list) :'a =
-  begin match l with
-    | [_;x] -> x
-    | _ -> raise (Failure "Problem with getting operands from operandslist in get_dest_operand")
-  end
-
 
 (* Simulates one step of the machine:
    - fetch the instruction at %rip
