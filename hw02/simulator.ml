@@ -181,10 +181,6 @@ let get_dst (ops:operand list) : operand =
 (* map addr and extract option *)
 let get_addr (addr:quad) : int = get_option @@ map_addr addr
 
-let get_map_addr (addr:quad) :int =
-  get_option @@ map_addr addr
-
-
 (* Simulates one step of the machine:
    - fetch the instruction at %rip
    - compute the source and/or destination information from the operands
