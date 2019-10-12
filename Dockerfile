@@ -9,6 +9,9 @@ RUN apt-get update &&\
 RUN mkdir /llvm && cd /llvm &&\
     wget http://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz &&\
     tar -xf llvm-9.0.0.src.tar.xz &&\
+    wget http://releases.llvm.org/9.0.0/cfe-9.0.0.src.tar.xz &&\
+    tar -xf cfe-9.0.0.src.tar.xz &&\
+    mv cfe-9.0.0.src llvm-9.0.0.src/tools/clang &&\
     mkdir llvm-build && cd llvm-build &&\
     cmake -G "Unix Makefiles" ../llvm-9.0.0.src &&\
     make -j2 &&\
