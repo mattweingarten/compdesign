@@ -276,8 +276,10 @@ let step (m:mach) : unit =
 
   (*=== Data manipulators ===*)
   (* store sbytes_list in mem at addr *)
-  let rec store_sbytes (bytes:sbyte list) (addr:quad) = 
-    Array.blit (Array.of_list bytes) 0 m.mem (get_addr addr) (List.length bytes) in
+  let rec store_sbytes (bytes:sbyte list) (addr:quad) =
+    try  Array.blit (Array.of_list bytes) 0 m.mem (get_addr addr) (List.length bytes) 
+    with Invalid_argument _ -> raise X86lite_segfault
+  in
 
   (* store result to the adequate location *)
   let store_res (res:quad) (d_op:operand) (addr:quad) = 
@@ -291,12 +293,12 @@ let step (m:mach) : unit =
   let set_LSB (b:quad) (d_op) =  
     begin match d_op with
       | Reg reg -> 
-        let mask = Int64.logor 0xfffffffffffffffeL b in
+        let mask = Int64.logor 0xffffffffffffff00L b in
         let r = Int64.logand mask (interp_op d_op) in
         m.regs.(rind reg) <- r
       | _ ->
         let byte = Byte (Char.chr @@ Int64.to_int b) in
-        m.mem.((get_addr @@ interp_op d_op) + 7) <- byte 
+        store_sbytes [byte] (Int64.add (interp_op d_op) 7L)
     end 
   in
 
@@ -384,7 +386,8 @@ let step (m:mach) : unit =
     let shifted = shift_instr Shlq dst_op amt in
     let top2 = Int64.shift_right_logical shifted 62 in 
     store_res shifted dst_op (interp_op dst_op);
-    if amt = 1 && (Int64.equal top2 0L || Int64.equal top2 3L) then m.flags.fo <- true
+    if amt = 1 && (top2 = 0b01L || top2 = 0b10L) then m.flags.fo <- true;
+    Printf.printf "top2 %s\n" (Int64.to_string top2)
   in
 
   let shrq_instr (os:operand list) = 
@@ -393,7 +396,7 @@ let step (m:mach) : unit =
     let shifted = shift_instr Shrq dst_op amt in
     let msb = Int64.shift_right_logical shifted 63 in
     store_res shifted dst_op (interp_op dst_op);
-    if amt = 1 then m.flags.fo <- if Int64.equal msb 1L then true else false 
+    if amt = 1 then m.flags.fo <- if msb = 1L then true else false 
   in
 
   let set_instr (os:operand list) cc = 
