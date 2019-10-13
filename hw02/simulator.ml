@@ -276,9 +276,9 @@ let step (m:mach) : unit =
 
   (*=== Data manipulators ===*)
   (* store sbytes_list in mem at addr *)
-  let rec store_sbytes (bytes:sbyte list) (addr:quad) =
-    try  Array.blit (Array.of_list bytes) 0 m.mem (get_addr addr) (List.length bytes) 
-    with Invalid_argument _ -> raise X86lite_segfault
+  let rec store_sbytes (sbytes:sbyte list) (addr:quad) =
+    Array.blit (Array.of_list sbytes) 0 m.mem (get_addr addr) (List.length sbytes) 
+    (*with Invalid_argument _ -> raise X86lite_segfault*)
   in
 
   (* store result to the adequate location *)
