@@ -388,7 +388,6 @@ let step (m:mach) : unit =
     let top2 = Int64.shift_right_logical dst_int 62 in 
     store_res shifted dst_op dst_int;
     if amt = 1 && (top2 = 0b01L || top2 = 0b10L) then m.flags.fo <- true;
-    Printf.printf "top2 %s\n" (Int64.to_string top2)
   in
 
   let shrq_instr (os:operand list) = 
