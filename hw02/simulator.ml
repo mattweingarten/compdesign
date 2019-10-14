@@ -383,20 +383,20 @@ let step (m:mach) : unit =
   let shlq_instr (os:operand list) = 
     let amt = get_amt (get_src os) in
     let dst_op = get_dst os in
-    let dst_int = interp_op dst_op in
+    let dst_val = get_value dst_op in
     let shifted = shift_instr Shlq dst_op amt in
-    let top2 = Int64.shift_right_logical dst_int 62 in 
-    store_res shifted dst_op dst_int;
+    let top2 = Int64.shift_right_logical dst_val 62 in 
+    store_res shifted dst_op (interp_op dst_op);
     if amt = 1 && (top2 = 0b01L || top2 = 0b10L) then m.flags.fo <- true;
   in
 
   let shrq_instr (os:operand list) = 
     let amt = get_amt (get_src os) in
     let dst_op = get_dst os in
-    let dst_int = interp_op dst_op in
+    let dst_val = get_value dst_op in
     let shifted = shift_instr Shrq dst_op amt in
-    let msb = Int64.shift_right_logical dst_int 63 in
-    store_res shifted dst_op dst_int;
+    let msb = Int64.shift_right_logical dst_val 63 in
+    store_res shifted dst_op (interp_op dst_op);
     if amt = 1 then m.flags.fo <- if msb = 1L then true else false 
   in
 
