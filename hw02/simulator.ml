@@ -214,7 +214,8 @@ let step (m:mach) : unit =
 
   (* get value from mem at addr *)
   let int64_from_mem (addr:quad) = 
-    int64_of_sbytes @@ Array.to_list @@ Array.sub m.mem (get_addr addr) 8
+    try int64_of_sbytes @@ Array.to_list (Array.sub m.mem (get_addr addr) 8)
+    with Invalid_argument _ -> raise X86lite_segfault
   in
 
   (* get the value of an operand, either reg content or mem content at addr *)
@@ -277,8 +278,8 @@ let step (m:mach) : unit =
   (*=== Data manipulators ===*)
   (* store sbytes_list in mem at addr *)
   let rec store_sbytes (sbytes:sbyte list) (addr:quad) =
-    Array.blit (Array.of_list sbytes) 0 m.mem (get_addr addr) (List.length sbytes) 
-    (*with Invalid_argument _ -> raise X86lite_segfault*)
+    try Array.blit (Array.of_list sbytes) 0 m.mem (get_addr addr) (List.length sbytes) 
+    with Invalid_argument _ -> raise X86lite_segfault
   in
 
   (* store result to the adequate location *)
@@ -290,16 +291,11 @@ let step (m:mach) : unit =
   in 
 
   (* set the LSB to b (0 or 1) *)
-  let set_LSB (b:quad) (d_op) =  
-    begin match d_op with
-      | Reg reg -> 
-        let mask = Int64.logor 0xffffffffffffff00L b in
-        let r = Int64.logand mask (interp_op d_op) in
-        m.regs.(rind reg) <- r
-      | _ ->
-        let byte = Byte (Char.chr @@ Int64.to_int b) in
-        store_sbytes [byte] (interp_op d_op)
-    end 
+  let set_LSB (b:quad) (d_op:operand) =  
+    let dst_val = get_value d_op in
+    let mask = Int64.logor 0xffffffffffffff00L b in
+    let result = Int64.logand mask dst_val in
+    store_res result d_op (interp_op d_op)
   in
 
   (* set zero flag *)

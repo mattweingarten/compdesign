@@ -9,3 +9,5 @@
 _build
 # native files
 *.native
+# zip files
+*.zip
