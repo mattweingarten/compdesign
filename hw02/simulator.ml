@@ -298,7 +298,7 @@ let step (m:mach) : unit =
         m.regs.(rind reg) <- r
       | _ ->
         let byte = Byte (Char.chr @@ Int64.to_int b) in
-        store_sbytes [byte] (Int64.add (interp_op d_op) 7L)
+        store_sbytes [byte] (interp_op d_op)
     end 
   in
 
@@ -383,9 +383,10 @@ let step (m:mach) : unit =
   let shlq_instr (os:operand list) = 
     let amt = get_amt (get_src os) in
     let dst_op = get_dst os in
+    let dst_int = interp_op dst_op in
     let shifted = shift_instr Shlq dst_op amt in
-    let top2 = Int64.shift_right_logical shifted 62 in 
-    store_res shifted dst_op (interp_op dst_op);
+    let top2 = Int64.shift_right_logical dst_int 62 in 
+    store_res shifted dst_op dst_int;
     if amt = 1 && (top2 = 0b01L || top2 = 0b10L) then m.flags.fo <- true;
     Printf.printf "top2 %s\n" (Int64.to_string top2)
   in
@@ -393,9 +394,10 @@ let step (m:mach) : unit =
   let shrq_instr (os:operand list) = 
     let amt = get_amt (get_src os) in
     let dst_op = get_dst os in
+    let dst_int = interp_op dst_op in
     let shifted = shift_instr Shrq dst_op amt in
-    let msb = Int64.shift_right_logical shifted 63 in
-    store_res shifted dst_op (interp_op dst_op);
+    let msb = Int64.shift_right_logical dst_int 63 in
+    store_res shifted dst_op dst_int;
     if amt = 1 then m.flags.fo <- if msb = 1L then true else false 
   in
 
