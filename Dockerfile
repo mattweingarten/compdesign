@@ -26,12 +26,13 @@ RUN apt-get update &&\
 
 # install ocaml
 RUN apt-get update &&\
-    apt-get install -y ocaml ocaml-native-compilers ocamlbuild opam &&\
+    apt-get install -y ocaml ocaml-base ocaml-native-compilers ocaml-compiler-libs \
+         ocaml-interp ocaml-base-nox ocaml-nox ocamlbuild opam menhir &&\
     apt-get clean; rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
 
 RUN opam init -a --disable-sandboxing --compiler=4.07.0 &&\
     eval `opam config env` &&\
-    opam install -y ocamlbuild core utop menhir
+    opam install -y utop 
 
 # install additional tools
 RUN apt-get update &&\
