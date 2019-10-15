@@ -7,6 +7,9 @@ elif [[ "$OSTYPE" == "linux-gnu" ]]; then
 fi
 
 # llvm and clang
+mkdir ~/llvm_build
+cd ~/llvm_build
+
 wget http://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz
 tar -xf llvm-9.0.0.src.tar.xz    
 
