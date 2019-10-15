@@ -3,7 +3,7 @@
 if [[ "$OSTYPE" == "darwin"* ]]; then
     brew install gcc svn python zlib
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then
-    sudo pacman -Syu gcc svn gunzip python zlib
+    sudo pacman -Syu --noconfirm gcc svn gunzip python zlib
 fi
 
 # llvm and clang
@@ -28,7 +28,7 @@ make install
 if [[ "$OSTYPE" == "darwin"* ]]; then
     brew install opam
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then
-    sudo pacman -Syu opam
+    sudo pacman -Syu --noconfirm opam
 fi
 opam init -a
 eval `opam config env`
