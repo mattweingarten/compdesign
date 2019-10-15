@@ -1,9 +1,9 @@
 #!/bin/sh
 # base dependencies
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    brew install gcc svn python zlib
+    brew install cmake gcc svn python zlib
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then
-    sudo pacman -Syu --noconfirm gcc svn gunzip python zlib
+    sudo pacman -Syu --noconfirm cmake gcc svn python 
 fi
 
 # llvm and clang
@@ -16,7 +16,7 @@ tar -xf llvm-9.0.0.src.tar.xz
 wget http://releases.llvm.org/9.0.0/cfe-9.0.0.src.tar.xz
 tar -xf cfe-9.0.0.src.tar.xz    
 
-mv -r cfe-9.0.0.src llvm-9.0.0.src/tools/clang
+mv cfe-9.0.0.src llvm-9.0.0.src/tools/clang
 
 mkdir llvm-build    -- create a directory parallel to /llvm
 cd llvm-build
