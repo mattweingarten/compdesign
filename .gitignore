@@ -11,3 +11,6 @@ _build
 *.native
 # zip files
 *.zip
+# hw03 output
+output
+*.s
