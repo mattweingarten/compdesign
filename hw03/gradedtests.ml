@@ -167,8 +167,6 @@ let large_tests = [ "llprograms/list1.ll", 3L
                   ; "llprograms/cbr.ll", 42L
                   ; "llprograms/factorial.ll", 120L
                   ; "llprograms/factrect.ll", 120L
-                  ; "llprograms/petrosky_branches.ll", 0L
-                  ; "llprograms/bubblesort.ll", 1L
                   ]
 
 
