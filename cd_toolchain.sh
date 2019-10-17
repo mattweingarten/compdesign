@@ -5,24 +5,34 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then
     sudo pacman -Syu --noconfirm cmake gcc svn python 
 fi
-
 # llvm and clang
-mkdir ~/llvm_build
-cd ~/llvm_build
 
-wget http://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz
-tar -xf llvm-9.0.0.src.tar.xz    
+if hash clang 2>/dev/null; then
+    echo llvm and clang already installed
+else
+    mkdir ~/llvm_build
+    cd ~/llvm_build
 
-wget http://releases.llvm.org/9.0.0/cfe-9.0.0.src.tar.xz
-tar -xf cfe-9.0.0.src.tar.xz    
+    wget http://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz
+    tar -xf llvm-9.0.0.src.tar.xz    
 
-mv cfe-9.0.0.src llvm-9.0.0.src/tools/clang
+    wget http://releases.llvm.org/9.0.0/cfe-9.0.0.src.tar.xz
+    tar -xf cfe-9.0.0.src.tar.xz    
 
-mkdir llvm-build    -- create a directory parallel to /llvm
-cd llvm-build
-cmake -G "Unix Makefiles" ../llvm-9.0.0.src
-make -j2          -- drop -j2 flag if not on multiprocessor / takes a while!
-make install
+    mv cfe-9.0.0.src llvm-9.0.0.src/tools/clang
+
+    mkdir llvm-build    -- create a directory parallel to /llvm
+    cd llvm-build
+    cmake -G "Unix Makefiles" ../llvm-9.0.0.src
+    -- llvm already installed, only add clang
+    if hash llvm-as 2>/dev/null; then 
+        cd tools/clang    --Execute this command only if you have installed llvm before, otherwise ignore this command.
+    else
+        echo llvm not installed
+    fi
+    make -j2          -- drop -j2 flag if not on multiprocessor / takes a while!
+    make install
+fi
 
 # ocaml setup
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -32,7 +42,15 @@ elif [[ "$OSTYPE" == "linux-gnu" ]]; then
 fi
 opam init -a
 eval `opam config env`
-opam switch create 4.07.0
+
+if opam switch 4.07.0; then
+    opam switch 4.07.0
+    echo switch present, just switch
+else 
+    opam switch create 4.07.0
+    echo switch not present, creating
+fi
+
 opam install -y ocaml ocamlbuild core core_extended menhir merlin utop
 eval `opam config env`
 
