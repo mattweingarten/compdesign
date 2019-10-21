@@ -255,7 +255,6 @@ let compile_block ctxt blk : ins list =
 let compile_lbl_block lbl ctxt blk : elem =
   let result = Asm.text lbl (compile_block ctxt blk) in
   let res_string = X86.string_of_elem result in
-  Printf.printf "\nHere is result of compile block:\n %s\n----------------------------------\n" res_string;
   result
 
 
@@ -271,8 +270,9 @@ let compile_lbl_block lbl ctxt blk : elem =
 
    [ NOTE: the first six arguments are numbered 0 .. 5 ]
 *)
+
 let arg_loc (n : int) : operand =
-  let offset x = Ind3 (Lit (Int64.of_int (8 * x)), Rbp) in
+ let offset x = Ind3 (Lit (Int64.of_int (8 * x)), Rbp) in
   begin match n with
     | 0 -> Reg Rdi
     | 1 -> Reg Rsi
@@ -294,17 +294,23 @@ let arg_loc (n : int) : operand =
 
 *)
 
+(*Dumped everything into stack layout for now even arguments and arguments in registers (seems like bad idea)*)
+let stack_layout (args : uid list) ((block :block) , (lbled_blocks :(lbl * block) list)) : layout =
+  let pos_offset x = Ind3 (Lit (Int64.of_int (8 * x)), Rbp) in
+  let neg_offset x = Ind3 (Lit (Int64.of_int (-8 * (x+1))), Rbp) in
+  let param_layout = List.mapi (fun i x -> (x, pos_offset i)) args in
+  let local_layout = List.append block.insns (List.flatten @@ List.map (fun x -> (snd x).insns)  lbled_blocks) in
+  let local_layout_computed = List.mapi (fun i x -> (fst x, neg_offset i)) local_layout in
+  let result = List.append param_layout local_layout_computed in
+  result
 
-let stack_layout args (block, lbled_blocks) : layout =
-  []
-  (* let layout = [] in
-  begin match args with
-    | x::xs -> begin match x with
-                | Ind3 _ -> x
-                | _ ->
-               end
-  end *)
+(*Helper function to print out stack*)
+let rec print_stack (layout :layout) :unit =
 
+  begin match layout with
+    | x::xs -> Printf.printf "\n%s: %s \n" (fst x) (X86.string_of_operand @@ snd x); print_stack xs
+    | [] -> Printf.printf "\n-----------------\n"
+  end
 (* The code for the entry-point of a function must do several things:
 
    - since our simple compiler maps local %uids to stack slots,
@@ -325,6 +331,9 @@ let stack_layout args (block, lbled_blocks) : layout =
 
 let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let stack = stack_layout f_param f_cfg in
+  Printf.printf "\n-----------------\n";
+  Printf.printf "Stack:\n";
+  print_stack stack;
   let ctxt = {tdecls=tdecls;layout=stack} in
   let main_block = fst f_cfg in
   let non_main_blocks = snd f_cfg in
