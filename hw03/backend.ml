@@ -140,7 +140,7 @@ let compile_call ctxt fop args =
      Your function should simply return 0 in those cases
 *)
 let rec size_ty tdecls t : int =
-failwith "size_ty not implemented"
+  failwith "size_ty not implemented"
 
 
 
@@ -156,22 +156,22 @@ failwith "size_ty not implemented"
 
    4. subsequent indices are interpreted according to the type t:
 
-     - if t is a struct, the index must be a constant n and it 
+   - if t is a struct, the index must be a constant n and it 
        picks out the n'th element of the struct. [ NOTE: the offset
        within the struct of the n'th element is determined by the 
        sizes of the types of the previous elements ]
 
-     - if t is an array, the index can be any operand, and its
+   - if t is an array, the index can be any operand, and its
        value determines the offset within the array.
- 
-     - if t is any other type, the path is invalid
+
+   - if t is any other type, the path is invalid
 
    5. if the index is valid, the remainder of the path is computed as
       in (4), but relative to the type f the sub-element picked out
       by the path so far
 *)
 let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-failwith "compile_gep not implemented"
+  failwith "compile_gep not implemented"
 
 
 
@@ -199,11 +199,17 @@ failwith "compile_gep not implemented"
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn ctxt (uid, i) : X86.ins list =
-      failwith "compile_insn not implemented"
+  failwith "compile_insn not implemented"
 
 
 
 (* compiling terminators  --------------------------------------------------- *)
+let compile_ret (ctxt:ctxt) (a:Ll.ty * Ll.operand option) = 
+  begin match a with
+    | (_, None) -> [(Retq, [])]
+    | _ -> failwith "retrip"
+  end
+
 
 (* Compile block terminators is not too difficult:
 
@@ -216,14 +222,19 @@ let compile_insn ctxt (uid, i) : X86.ins list =
    - Cbr branch should treat its operand as a boolean conditional
 *)
 let compile_terminator ctxt t =
-  failwith "compile_terminator not implemented"
-
+  let open Asm in
+  begin match t with
+    | Ret (t, op) -> compile_ret ctxt (t, op)
+    | _ -> failwith "rip"
+  end
 
 (* compiling blocks --------------------------------------------------------- *)
 
 (* We have left this helper function here for you to complete. *)
 let compile_block ctxt blk : ins list =
-  failwith "compile_block not implemented"
+  let f = fun insn -> compile_insn ctxt insn in
+  (List.map f blk.insns |> List.flatten) @ compile_terminator ctxt (snd blk.term)
+
 
 let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
@@ -241,8 +252,19 @@ let compile_lbl_block lbl ctxt blk : elem =
    [ NOTE: the first six arguments are numbered 0 .. 5 ]
 *)
 let arg_loc (n : int) : operand =
-failwith "arg_loc not implemented"
+  begin match n with
+    | 0 -> Reg Rdi  | 1 -> Reg Rsi  | 2 -> Reg Rdx
+    | 3 -> Reg Rcx  | 4 -> Reg R08  | 5 -> Reg R09
+    | n -> Ind3 (Lit (Int64.of_int @@ 8 * (n-4)), Rbp)
+  end
 
+let stack_arg i uid = (uid, arg_loc i)
+
+let rec stack_args i xs = 
+  begin match xs with
+    | [] -> []
+    | x::ys -> (stack_arg i x)::stack_args (i+1) ys
+  end
 
 (* We suggest that you create a helper function that computes the 
    stack layout for a given function declaration.
@@ -253,8 +275,8 @@ failwith "arg_loc not implemented"
    - see the discusion about locals 
 
 *)
-let stack_layout args (block, lbled_blocks) : layout =
-failwith "stack_layout not implemented"
+let stack_layout args (blk, lbled_blocks) : layout =
+  stack_args 0 args 
 
 (* The code for the entry-point of a function must do several things:
 
@@ -273,8 +295,10 @@ failwith "stack_layout not implemented"
      to hold all of the local stack slots.
 *)
 let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
-failwith "compile_fdecl unimplemented"
-
+  let layout = stack_layout f_param f_cfg in
+  let ctxt = { tdecls = tdecls; layout = layout; } in
+  let f = fun (lbl, blk) -> compile_lbl_block lbl ctxt blk in
+  [f ((name), (fst f_cfg))] @ (List.map f (snd f_cfg))
 
 
 (* compile_gdecl ------------------------------------------------------------ *)
