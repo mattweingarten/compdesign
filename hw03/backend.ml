@@ -296,7 +296,7 @@ let arg_loc (n : int) : operand =
 
 (*Dumped everything into stack layout for now even arguments and arguments in registers (seems like bad idea)*)
 let stack_layout (args : uid list) ((block :block) , (lbled_blocks :(lbl * block) list)) : layout =
-  let pos_offset x = Ind3 (Lit (Int64.of_int (8 * x)), Rbp) in
+  let pos_offset x = Ind3 (Lit (Int64.of_int (8 * (x + 2))), Rbp) in
   let neg_offset x = Ind3 (Lit (Int64.of_int (-8 * (x+1))), Rbp) in
   let param_layout = List.mapi (fun i x -> (x, pos_offset i)) args in
   let local_layout = List.append block.insns (List.flatten @@ List.map (fun x -> (snd x).insns)  lbled_blocks) in
