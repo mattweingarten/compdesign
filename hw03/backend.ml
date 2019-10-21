@@ -60,6 +60,9 @@ type ctxt = { tdecls : (tid * ty) list
 (* useful for looking up items in tdecls or layouts *)
 let lookup m x = List.assoc x m
 
+let get (ctxt:ctxt) (id :uid) :X86.operand =
+  snd @@ List.find (fun (uid, op) -> id = uid) ctxt.layout
+
 
 (* compiling operands  ------------------------------------------------------ *)
 
@@ -88,8 +91,12 @@ let lookup m x = List.assoc x m
    the X86 instruction that moves an LLVM operand into a designated
    destination (usually a register).
 *)
-let compile_operand ctxt dest : Ll.operand -> ins =
-  function _ -> failwith "compile_operand unimplemented"
+let compile_operand ctxt (dest:X86.operand) : Ll.operand -> ins = function
+      | Const x -> (Movq, [(Imm (Lit x));dest])
+      | Id x -> (Movq, [(get ctxt x);dest])
+      | Gid x -> failwith "operand not implemented"
+      | Null -> failwith "operand not implemented"
+
 
 
 
@@ -199,7 +206,21 @@ failwith "compile_gep not implemented"
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn ctxt (uid, i) : X86.ins list =
-      failwith "compile_insn not implemented"
+      let instruction_list = [] in
+      let get_src = compile_operand ctxt (Reg R09) in
+      let get_dest = compile_operand ctxt (Reg R10) in
+      let move_result_to_stack = (Movq,[(Reg R10);(get ctxt uid)]) in
+      let compile_binop bop ty op1 op2 =
+        begin match bop with
+          | Add -> (get_src op1) :: ((get_dest op2) :: (  (Addq,[(Reg R10);(Reg R09)]):: ((Movq,[(Reg R09);(get ctxt uid)]) :: [])))
+          | _ -> failwith "Not yet implemented this binop"
+        end
+      in
+      begin match i with
+        | Binop (bop,ty,op1,op2) -> compile_binop bop ty op1 op2
+        | _ -> failwith "not yet implented non binop"
+      end
+
 
 
 
@@ -218,12 +239,23 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
 
 
-
+let print_option (op: 'a option) :unit =
+  begin match op with
+    | Some _ -> Printf.printf "\nSome\n"
+    | None -> Printf.printf "\nNone\n"
+  end
 (*free stack space for Retq*)
 let compile_terminator (ctxt :ctxt) t :ins list  =
-  let compile_ret  (return_type:ty) (op :operand option) : ins list =
+  let compile_ret  (return_type:ty) (op :Ll.operand option) : ins list =
+    let put_in_rax = compile_operand ctxt (Reg Rax) in
+    let retq = [Retq, []] in
     begin match return_type with
-      | Void ->  [Retq, []]
+      | Void -> if (op!= None ) then raise(Failure "Cannot return an Operand with type Void!")
+                                  else retq
+      | I64 -> begin match op with
+                | Some x -> (put_in_rax x) :: retq
+                | None -> raise(Failure "Missing operand when returning i64")
+               end
       | _ -> failwith "non void return uniplemented"
     end
   in
@@ -231,7 +263,7 @@ let compile_terminator (ctxt :ctxt) t :ins list  =
   let input = fst t in
   let terminator = snd t in
   begin match terminator with
-    | Ret (return_type, op) -> compile_ret return_type None
+    | Ret (return_type, op) -> compile_ret return_type op
     | _ -> failwith "only implemented Ret"
   end
 
@@ -242,11 +274,13 @@ let compile_terminator (ctxt :ctxt) t :ins list  =
 
 
 (* compiling blocks --------------------------------------------------------- *)
-let compile_body_of_block (ctxt: ctxt) (ins_list : (uid*insn) list) :ins list =
-  []
+
 (* We have left this helper function here for you to complete. *)
 let compile_block ctxt blk : ins list =
-  let ins_list = compile_body_of_block ctxt blk.insns in
+  let compile_body_of_block  (ins_list : (uid*insn) list) :ins list =
+    List.flatten @@ List.map (fun x -> compile_insn ctxt x) ins_list
+  in
+  let ins_list = compile_body_of_block blk.insns in
   let term_ins_list  = compile_terminator ctxt blk.term in
 
   List.append ins_list term_ins_list
@@ -295,8 +329,9 @@ let arg_loc (n : int) : operand =
 *)
 
 (*Dumped everything into stack layout for now even arguments and arguments in registers (seems like bad idea)*)
+(* at this point argc and arcv get push onto stack.... Good or not good? *)
 let stack_layout (args : uid list) ((block :block) , (lbled_blocks :(lbl * block) list)) : layout =
-  let pos_offset x = Ind3 (Lit (Int64.of_int (8 * (x + 2))), Rbp) in
+  let pos_offset x = Ind3 (Lit (Int64.of_int (8 * (x+2))), Rbp) in
   let neg_offset x = Ind3 (Lit (Int64.of_int (-8 * (x+1))), Rbp) in
   let param_layout = List.mapi (fun i x -> (x, pos_offset i)) args in
   let local_layout = List.append block.insns (List.flatten @@ List.map (fun x -> (snd x).insns)  lbled_blocks) in
