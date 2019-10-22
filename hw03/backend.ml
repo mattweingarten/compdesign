@@ -92,10 +92,10 @@ let get (ctxt:ctxt) (id :uid) :X86.operand =
    destination (usually a register).
 *)
 let compile_operand ctxt (dest:X86.operand) : Ll.operand -> ins = function
-      | Const x -> (Movq, [(Imm (Lit x));dest])
-      | Id x -> (Movq, [(get ctxt x);dest])
-      | Gid x -> failwith "operand not implemented"
-      | Null -> failwith "operand not implemented"
+  | Const x -> (Movq, [(Imm (Lit x));dest])
+  | Id x -> (Movq, [(get ctxt x);dest])
+  | Gid x -> failwith "operand not implemented"
+  | Null -> failwith "operand not implemented"
 
 
 
@@ -163,7 +163,7 @@ let rec size_ty tdecls t : int =
 
    4. subsequent indices are interpreted according to the type t:
 
-     - if t is a struct, the index must be a constant n and it
+   - if t is a struct, the index must be a constant n and it
        picks out the n'th element of the struct. [ NOTE: the offset
        within the struct of the n'th element is determined by the
        sizes of the types of the previous elements ]
@@ -171,7 +171,7 @@ let rec size_ty tdecls t : int =
    - if t is an array, the index can be any operand, and its
        value determines the offset within the array.
 
-     - if t is any other type, the path is invalid
+   - if t is any other type, the path is invalid
 
    5. if the index is valid, the remainder of the path is computed as
       in (4), but relative to the type f the sub-element picked out
@@ -206,28 +206,28 @@ let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins lis
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn ctxt (uid, i) : X86.ins list =
-      let instruction_list = [] in
-      let get_src = compile_operand ctxt (Reg R09) in
-      let get_dest = compile_operand ctxt (Reg R10) in
-      let move_result_to_stack = (Movq,[(Reg R10);(get ctxt uid)]) in
-      let compile_binop bop ty op1 op2 =
-        begin match bop with
-          | Add -> (get_src op1) :: ((get_dest op2) :: (  (Addq,[(Reg R10);(Reg R09)]):: ((Movq,[(Reg R09);(get ctxt uid)]) :: [])))
-          | _ -> failwith "Not yet implemented this binop"
-        end
-      in
-      begin match i with
-        | Binop (bop,ty,op1,op2) -> compile_binop bop ty op1 op2
-        | _ -> failwith "not yet implented non binop"
-      end
+  let instruction_list = [] in
+  let get_src = compile_operand ctxt (Reg R09) in
+  let get_dest = compile_operand ctxt (Reg R10) in
+  let move_result_to_stack = (Movq,[(Reg R10);(get ctxt uid)]) in
+  let compile_binop bop ty op1 op2 =
+    begin match bop with
+      | Add -> (get_src op1) :: ((get_dest op2) :: (  (Addq,[(Reg R10);(Reg R09)]):: ((Movq,[(Reg R09);(get ctxt uid)]) :: [])))
+      | _ -> failwith "Not yet implemented this binop"
+    end
+  in
+  begin match i with
+    | Binop (bop,ty,op1,op2) -> compile_binop bop ty op1 op2
+    | _ -> failwith "not yet implented non binop"
+  end
 
 
 
 
 (* compiling terminators  --------------------------------------------------- *)
-let compile_ret (ctxt:ctxt) (a:Ll.ty * Ll.operand option) = 
+let compile_ret (ctxt:ctxt) (a:Ll.ty * Ll.operand option) =
   begin match a with
-    | (_, None) -> [(Retq, [])]
+    | (_, None) -> [Retq, []]
     | _ -> failwith "retrip"
   end
 
@@ -257,11 +257,11 @@ let compile_terminator (ctxt :ctxt) t :ins list  =
     let retq = [Retq, []] in
     begin match return_type with
       | Void -> if (op!= None ) then raise(Failure "Cannot return an Operand with type Void!")
-                                  else retq
+        else retq
       | I64 -> begin match op with
-                | Some x -> (put_in_rax x) :: retq
-                | None -> raise(Failure "Missing operand when returning i64")
-               end
+          | Some x -> (put_in_rax x) :: retq
+          | None -> raise(Failure "Missing operand when returning i64")
+        end
       | _ -> failwith "non void return uniplemented"
     end
   in
@@ -275,8 +275,8 @@ let compile_terminator (ctxt :ctxt) t :ins list  =
 
 
 
-  (* | Br lbl -> failwith "terminator Br unimplemented"
-  | Cbr (condition, lbl, lbl) -> failwith "terminator Cbr unimplemented" *)
+(* | Br lbl -> failwith "terminator Br unimplemented"
+   | Cbr (condition, lbl, lbl) -> failwith "terminator Cbr unimplemented" *)
 
 
 (* compiling blocks --------------------------------------------------------- *)
@@ -284,7 +284,7 @@ let compile_terminator (ctxt :ctxt) t :ins list  =
 (* We have left this helper function here for you to complete. *)
 let compile_block ctxt blk : ins list =
   let f = fun insn -> compile_insn ctxt insn in
-  (List.map f blk.insns |> List.flatten) @ compile_terminator ctxt (snd blk.term)
+  (List.map f blk.insns |> List.flatten) @ compile_terminator ctxt blk.term
 
 
 let compile_lbl_block lbl ctxt blk : elem =
@@ -314,13 +314,34 @@ let arg_loc (n : int) : operand =
 
 let stack_arg i uid = (uid, arg_loc i)
 
-let rec stack_args i xs = 
+let rec stack_args i xs =
   begin match xs with
     | [] -> []
     | x::ys -> (stack_arg i x)::stack_args (i+1) ys
   end
 
-(* We suggest that you create a helper function that computes the 
+let rec stack_insns (offset:int) (insns:(uid * insn) list) =
+  begin match insns with
+    | [] -> []
+    | x::xs -> (stack_arg offset (fst x))::(stack_insns (offset+1) xs)
+  end
+
+let stack_terminator (offset:int) (term:(uid * terminator)) =
+  stack_arg offset (fst term)
+
+let stack_block (offset:int) (blk:block) =
+  let term_offset = offset + (List.length blk.insns) in
+  stack_insns offset blk.insns @ [stack_terminator term_offset blk.term]
+
+let rec stack_lbl_blocks (offset:int) (blks:(lbl * block) list) =
+  begin match blks with
+    | [] -> []
+    | x::xs ->
+      let curr = (snd x).insns in
+      (stack_block offset (snd x))::stack_lbl_blocks (offset + (List.length curr) + 1) xs
+  end
+
+(* We suggest that you create a helper function that computes the
    stack layout for a given function declaration.
 
    - each function argument should be copied into a stack slot
@@ -329,19 +350,10 @@ let rec stack_args i xs =
    - see the discusion about locals
 
 *)
-let stack_layout args (blk, lbled_blocks) : layout =
-  stack_args 0 args 
-
-(*Dumped everything into stack layout for now even arguments and arguments in registers (seems like bad idea)*)
-(* at this point argc and arcv get push onto stack.... Good or not good? *)
-let stack_layout (args : uid list) ((block :block) , (lbled_blocks :(lbl * block) list)) : layout =
-  let pos_offset x = Ind3 (Lit (Int64.of_int (8 * (x+2))), Rbp) in
-  let neg_offset x = Ind3 (Lit (Int64.of_int (-8 * (x+1))), Rbp) in
-  let param_layout = List.mapi (fun i x -> (x, pos_offset i)) args in
-  let local_layout = List.append block.insns (List.flatten @@ List.map (fun x -> (snd x).insns)  lbled_blocks) in
-  let local_layout_computed = List.mapi (fun i x -> (fst x, neg_offset i)) local_layout in
-  let result = List.append param_layout local_layout_computed in
-  result
+let stack_layout (args:uid list) ((blk, lbled_blocks):cfg) : layout =
+  let entry_offset = (List.length args) in
+  let blks_offset = entry_offset + (List.length blk.insns) + 1 in
+  stack_args 0 args @ stack_block entry_offset blk @ (List.flatten @@ stack_lbl_blocks blks_offset lbled_blocks)
 
 (*Helper function to print out stack*)
 let rec print_stack (layout :layout) :unit =
@@ -374,11 +386,10 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   Printf.printf "Stack:\n";
   print_stack stack;
   let ctxt = {tdecls=tdecls;layout=stack} in
-  let main_block = fst f_cfg in
-  let non_main_blocks = snd f_cfg in
-  let main_block_compiled = [Asm.gtext name (compile_block ctxt main_block)] in
-  let compiled_blocks = List.map (fun (lbl, block) -> compile_lbl_block lbl ctxt block ) non_main_blocks in
-  List.append main_block_compiled compiled_blocks
+  let entry_blk = compile_block ctxt (fst f_cfg) in
+  let blks = snd f_cfg in
+  let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
+  [Asm.gtext name entry_blk] @ (List.map compile_blk blks)
 
 
 
