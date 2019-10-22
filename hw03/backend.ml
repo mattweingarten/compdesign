@@ -92,10 +92,10 @@ let get (ctxt:ctxt) (id :uid) :X86.operand =
    destination (usually a register).
 *)
 let compile_operand ctxt (dest:X86.operand) : Ll.operand -> ins = function
+  | Null -> (Movq, [Imm (Lit 0x0L);dest])
   | Const x -> (Movq, [(Imm (Lit x));dest])
+  | Gid x -> (Leaq, [Ind3 (Lbl (Platform.mangle x), Rip);dest])
   | Id x -> (Movq, [(get ctxt x);dest])
-  | Gid x -> failwith "operand not implemented"
-  | Null -> failwith "operand not implemented"
 
 
 
@@ -205,6 +205,9 @@ let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins lis
 
    - Bitcast: does nothing interesting at the assembly level
 *)
+let compile_binop (ctxt:ctxt) (args:(Ll.bop * Ll.ty * Ll.operand * Ll.operand)) =
+  ()
+
 let compile_insn ctxt (uid, i) : X86.ins list =
   let instruction_list = [] in
   let get_src = compile_operand ctxt (Reg R09) in
@@ -225,12 +228,6 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
 
 (* compiling terminators  --------------------------------------------------- *)
-let compile_ret (ctxt:ctxt) (a:Ll.ty * Ll.operand option) =
-  begin match a with
-    | (_, None) -> [Retq, []]
-    | _ -> failwith "retrip"
-  end
-
 
 (* Compile block terminators is not too difficult:
 
@@ -250,26 +247,21 @@ let print_option (op: 'a option) :unit =
     | Some _ -> Printf.printf "\nSome\n"
     | None -> Printf.printf "\nNone\n"
   end
+
+let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
+  let open Asm in
+  let exit =
+    begin match ret with
+    | (Void, _) -> []
+    | (I64, i) |  (I1, i)-> [compile_operand ctxt (~%Rax) (Option.get i)]
+    | _ -> failwith "ret not yet implemented"
+  end in
+  exit @ [Retq, []]
+
 (*free stack space for Retq*)
 let compile_terminator (ctxt :ctxt) t :ins list  =
-  let compile_ret  (return_type:ty) (op :Ll.operand option) : ins list =
-    let put_in_rax = compile_operand ctxt (Reg Rax) in
-    let retq = [Retq, []] in
-    begin match return_type with
-      | Void -> if (op!= None ) then raise(Failure "Cannot return an Operand with type Void!")
-        else retq
-      | I64 -> begin match op with
-          | Some x -> (put_in_rax x) :: retq
-          | None -> raise(Failure "Missing operand when returning i64")
-        end
-      | _ -> failwith "non void return uniplemented"
-    end
-  in
-
-  let input = fst t in
-  let terminator = snd t in
-  begin match terminator with
-    | Ret (return_type, op) -> compile_ret return_type op
+  begin match (snd t) with
+    | Ret (ty, op) -> compile_ret ctxt (ty, op)
     | _ -> failwith "only implemented Ret"
   end
 
@@ -389,7 +381,7 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
-  [Asm.gtext name entry_blk] @ (List.map compile_blk blks)
+  [Asm.gtext (Platform.mangle name) entry_blk] @ (List.map compile_blk blks)
 
 
 
