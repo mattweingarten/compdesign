@@ -52,7 +52,7 @@ else
     echo switch not present, creating
 fi
 
-opam install -y ocaml ocamlbuild core core_extended menhir merlin utop
+opam install -y ocaml ocamlbuild core core_extended menhir merlin utop ocp-indent
 eval `opam config env`
 
 touch ~/.ocamlinit
