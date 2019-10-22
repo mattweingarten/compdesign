@@ -14,7 +14,7 @@ type imm = Lit of quad
 (* Registers:
     instruction pointer: rip
     arguments: rdi, rsi, rdx, rcx, r09, r08
-    callee-save: rbx, rbp, r12-r15 
+    callee-save: rbx, rbp, r12-r15
 *)
 type reg = Rip
          | Rax | Rbx | Rcx | Rdx | Rsi | Rdi | Rbp | Rsp
@@ -39,9 +39,9 @@ type opcode = Movq | Pushq | Popq
             | Callq | Retq
 
 (* An instruction is an opcode plus its operands.
-   Note that arity and other constraints about the operands 
+   Note that arity and other constraints about the operands
    are not checked. *)
-type ins = opcode * operand list              
+type ins = opcode * operand list
 
 type data = Asciz of string
           | Quad of imm
@@ -120,7 +120,7 @@ let string_of_opcode : opcode -> string = function
   | Addq -> "addq" | Subq -> "subq" | Imulq -> "imulq"
   | Xorq -> "xorq" | Orq -> "orq"  | Andq -> "andq"
   | Shlq -> "shlq" | Sarq -> "sarq" | Shrq -> "shrq"
-  | Jmp  -> "jmp"  | J c -> "j" ^ string_of_cnd c 
+  | Jmp  -> "jmp"  | J c -> "j" ^ string_of_cnd c
   | Cmpq -> "cmpq" | Set c -> "set" ^ string_of_cnd c
   | Callq -> "callq" | Retq -> "retq"
 
@@ -131,17 +131,17 @@ let string_of_shift op = function
     "\t" ^ string_of_opcode op ^ "\t" ^ map_concat ", " string_of_operand args
   | [ Reg Rcx ; dst ] ->
     Printf.sprintf "\t%s\t%%cl, %s" (string_of_opcode op) (string_of_operand dst)
-  | args -> failwith (Printf.sprintf "shift instruction has invalid operands: %s\n" 
+  | args -> failwith (Printf.sprintf "shift instruction has invalid operands: %s\n"
                      (map_concat ", " string_of_operand args))
-                   
+
 let string_of_ins (op, args: ins) : string =
   match op with
   | Shlq | Sarq | Shrq -> string_of_shift op args
   | _ ->
   let f = match op with
-    | J _ | Jmp | Callq -> string_of_jmp_operand 
+    | J _ | Jmp | Callq -> string_of_jmp_operand
     | Set _ -> string_of_byte_operand
-    | _ -> string_of_operand 
+    | _ -> string_of_operand
   in
   "\t" ^ string_of_opcode op ^ "\t" ^ map_concat ", " f args
 
