@@ -205,23 +205,23 @@ let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins lis
 
    - Bitcast: does nothing interesting at the assembly level
 *)
-let compile_binop (ctxt:ctxt) (args:(Ll.bop * Ll.ty * Ll.operand * Ll.operand)) =
-  ()
+(* map ll bop to x86 binop *)
+let map_bop = function
+  | Add -> Addq   | Sub -> Subq   | Mul -> Imulq
+  | Shl -> Shlq   | Lshr -> Shrq  | Ashr -> Sarq
+  | And -> Andq   | Or -> Orq     | Xor -> Xorq
+
+(* use rax for dest (caller saved) and rcx for source (caller saved, works with shifts) *)
+let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * Ll.operand * Ll.operand)) =
+  let open Asm in
+  let load_src = [compile_operand ctxt (~%Rax) op1] in
+  let load_dst = [compile_operand ctxt (~%Rcx) op2] in
+  load_src @ load_dst @ [(map_bop bop, [(~%Rcx);(~%Rax)])] @ [Movq, [~%Rax;(get ctxt uid)]]
 
 let compile_insn ctxt (uid, i) : X86.ins list =
-  let instruction_list = [] in
-  let get_src = compile_operand ctxt (Reg R09) in
-  let get_dest = compile_operand ctxt (Reg R10) in
-  let move_result_to_stack = (Movq,[(Reg R10);(get ctxt uid)]) in
-  let compile_binop bop ty op1 op2 =
-    begin match bop with
-      | Add -> (get_src op1) :: ((get_dest op2) :: (  (Addq,[(Reg R10);(Reg R09)]):: ((Movq,[(Reg R09);(get ctxt uid)]) :: [])))
-      | _ -> failwith "Not yet implemented this binop"
-    end
-  in
   begin match i with
-    | Binop (bop,ty,op1,op2) -> compile_binop bop ty op1 op2
-    | _ -> failwith "not yet implented non binop"
+    | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
+    | _ -> failwith "binop not yet implented"
   end
 
 
@@ -252,10 +252,10 @@ let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
   let open Asm in
   let exit =
     begin match ret with
-    | (Void, _) -> []
-    | (I64, i) |  (I1, i)-> [compile_operand ctxt (~%Rax) (Option.get i)]
-    | _ -> failwith "ret not yet implemented"
-  end in
+      | (Void, _) -> []
+      | (I64, i) | (I8, i) | (I1, i) -> [compile_operand ctxt (~%Rax) (Option.get i)]
+      | _ -> failwith "ret not yet implemented"
+    end in
   exit @ [Retq, []]
 
 (*free stack space for Retq*)
@@ -281,7 +281,6 @@ let compile_block ctxt blk : ins list =
 
 let compile_lbl_block lbl ctxt blk : elem =
   let result = Asm.text lbl (compile_block ctxt blk) in
-  let res_string = X86.string_of_elem result in
   result
 
 
@@ -312,10 +311,12 @@ let rec stack_args i xs =
     | x::ys -> (stack_arg i x)::stack_args (i+1) ys
   end
 
+let stack_local (offset:int) (uid:uid) = (uid, Ind3 (Lit (Int64.of_int @@ 8 * (offset)), Rbp))
+
 let rec stack_insns (offset:int) (insns:(uid * insn) list) =
   begin match insns with
     | [] -> []
-    | x::xs -> (stack_arg offset (fst x))::(stack_insns (offset+1) xs)
+    | x::xs -> (stack_local offset (fst x))::(stack_insns (offset+1) xs)
   end
 
 let stack_terminator (offset:int) (term:(uid * terminator)) =
@@ -343,7 +344,7 @@ let rec stack_lbl_blocks (offset:int) (blks:(lbl * block) list) =
 
 *)
 let stack_layout (args:uid list) ((blk, lbled_blocks):cfg) : layout =
-  let entry_offset = (List.length args) in
+  let entry_offset = max (List.length args -6) 2 in
   let blks_offset = entry_offset + (List.length blk.insns) + 1 in
   stack_args 0 args @ stack_block entry_offset blk @ (List.flatten @@ stack_lbl_blocks blks_offset lbled_blocks)
 
