@@ -253,6 +253,9 @@ let print_option (op: 'a option) :unit =
 (* compile return terminator *)
 let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
   let open Asm in
+  (* deallocate stack (move stack pointer to rbp) and restore old frame pointer *)
+  let callee_exit = [Movq, [~%Rbp; ~%Rsp]; Popq, [~%Rbp]] in
+  (* put return value in %rax *)
   let exit =
     begin match ret with
       | (Void, _) -> []
@@ -263,24 +266,17 @@ let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
       | (Fun (tys, term), p) -> failwith "ret type not yet implemented"
       | (Namedt s, p) -> failwith "ret type not yet implemented"
     end in
-  exit @ [Retq, []]
+  exit @ callee_exit @ [Retq, []]
 
-(*free stack space for Retq*)
 let compile_terminator (ctxt :ctxt) t :ins list  =
   begin match (snd t) with
     | Ret (ty, op) -> compile_ret ctxt (ty, op)
-    | _ -> failwith "only implemented Ret"
+    | _ -> failwith "terminator not implemented"
   end
-
-
-
-(* | Br lbl -> failwith "terminator Br unimplemented"
-   | Cbr (condition, lbl, lbl) -> failwith "terminator Cbr unimplemented" *)
-
 
 (* compiling blocks --------------------------------------------------------- *)
 
-(* We have left this helper function here for you to complete. *)
+(* compile block and terminator *)
 let compile_block ctxt blk : ins list =
   let f = fun insn -> compile_insn ctxt insn in
   (List.map f blk.insns |> List.flatten) @ compile_terminator ctxt blk.term
@@ -321,7 +317,7 @@ let rec stack_args i xs =
   end
 
 (* stack single local *)
-let stack_local (offset:int) (uid:uid) = (uid, Ind3 (Lit (Int64.of_int @@ 8 * (offset)), Rbp))
+let stack_local (offset:int) (uid:uid) = (uid, Ind3 (Lit (Int64.of_int @@ -8 * (offset)), Rbp))
 
 (* stack intruction list *)
 let rec stack_insns (offset:int) (insns:(uid * insn) list) =
@@ -358,7 +354,7 @@ let rec stack_lbl_blocks (offset:int) (blks:(lbl * block) list) =
 
 *)
 let stack_layout (args:uid list) ((blk, lbled_blocks):cfg) : layout =
-  let entry_offset = max (List.length args -6) 2 in
+  let entry_offset = 1 in
   let blks_offset = entry_offset + (List.length blk.insns) + 1 in
   stack_args 0 args @ stack_block entry_offset blk @ (List.flatten @@ stack_lbl_blocks blks_offset lbled_blocks)
 
@@ -388,15 +384,16 @@ let rec print_stack (layout :layout) :unit =
 
 (* just throw everything on stack and compile blocks *)
 let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
+  let open Asm in
+  let callee_entry = [Pushq, [~%Rbp]; Movq, [~%Rsp;~%Rbp]] in
   let stack = stack_layout f_param f_cfg in
-  Printf.printf "\n-----------------\n";
-  Printf.printf "Stack:\n";
-  print_stack stack;
+  (* needed stack size is layout size - n_params. Allocate by pointing %rsp to top of stack *)
+  let allocate_stack = [Subq, [~$(8*(List.length stack - List.length f_param)); ~%Rsp]] in
   let ctxt = {tdecls=tdecls;layout=stack} in
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
-  [Asm.gtext (get_gid name) entry_blk] @ (List.map compile_blk blks)
+  [Asm.gtext (get_gid name) (callee_entry @ allocate_stack @ entry_blk)] @ (List.map compile_blk blks)
 
 
 
