@@ -63,6 +63,8 @@ let lookup m x = List.assoc x m
 let get (ctxt:ctxt) (id :uid) :X86.operand =
   snd @@ List.find (fun (uid, op) -> id = uid) ctxt.layout
 
+(* mangle global id *)
+let get_gid = Platform.mangle
 
 (* compiling operands  ------------------------------------------------------ *)
 
@@ -94,7 +96,7 @@ let get (ctxt:ctxt) (id :uid) :X86.operand =
 let compile_operand ctxt (dest:X86.operand) : Ll.operand -> ins = function
   | Null -> (Movq, [Imm (Lit 0x0L);dest])
   | Const x -> (Movq, [(Imm (Lit x));dest])
-  | Gid x -> (Leaq, [Ind3 (Lbl (Platform.mangle x), Rip);dest])
+  | Gid x -> (Leaq, [Ind3 (Lbl (get_gid x), Rip);dest])
   | Id x -> (Movq, [(get ctxt x);dest])
 
 
@@ -184,6 +186,19 @@ let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins lis
 
 (* compiling instructions  -------------------------------------------------- *)
 
+(* map ll bop to x86 binop *)
+let map_bop = function
+  | Add -> Addq   | Sub -> Subq   | Mul -> Imulq
+  | Shl -> Shlq   | Lshr -> Shrq  | Ashr -> Sarq
+  | And -> Andq   | Or -> Orq     | Xor -> Xorq
+
+(* use rax for dest (caller saved) and rcx for source (caller saved, works with shifts) *)
+let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * Ll.operand * Ll.operand)) =
+  let open Asm in
+  let load_src = [compile_operand ctxt (~%Rax) op1] in
+  let load_dst = [compile_operand ctxt (~%Rcx) op2] in
+  load_src @ load_dst @ [(map_bop bop, [(~%Rcx);(~%Rax)])] @ [Movq, [~%Rax;(get ctxt uid)]]
+
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
    for you. Some of the instructions require only a couple assembly
@@ -205,19 +220,6 @@ let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins lis
 
    - Bitcast: does nothing interesting at the assembly level
 *)
-(* map ll bop to x86 binop *)
-let map_bop = function
-  | Add -> Addq   | Sub -> Subq   | Mul -> Imulq
-  | Shl -> Shlq   | Lshr -> Shrq  | Ashr -> Sarq
-  | And -> Andq   | Or -> Orq     | Xor -> Xorq
-
-(* use rax for dest (caller saved) and rcx for source (caller saved, works with shifts) *)
-let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * Ll.operand * Ll.operand)) =
-  let open Asm in
-  let load_src = [compile_operand ctxt (~%Rax) op1] in
-  let load_dst = [compile_operand ctxt (~%Rcx) op2] in
-  load_src @ load_dst @ [(map_bop bop, [(~%Rcx);(~%Rax)])] @ [Movq, [~%Rax;(get ctxt uid)]]
-
 let compile_insn ctxt (uid, i) : X86.ins list =
   begin match i with
     | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
@@ -248,13 +250,18 @@ let print_option (op: 'a option) :unit =
     | None -> Printf.printf "\nNone\n"
   end
 
+(* compile return terminator *)
 let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
   let open Asm in
   let exit =
     begin match ret with
       | (Void, _) -> []
       | (I64, i) | (I8, i) | (I1, i) -> [compile_operand ctxt (~%Rax) (Option.get i)]
-      | _ -> failwith "ret not yet implemented"
+      | (Ptr _, p) -> failwith "ret type not yet implemented"
+      | (Struct t, p) -> failwith "ret type not yet implemented"
+      | (Array (s, t), p) -> failwith "ret type not yet implemented"
+      | (Fun (tys, term), p) -> failwith "ret type not yet implemented"
+      | (Namedt s, p) -> failwith "ret type not yet implemented"
     end in
   exit @ [Retq, []]
 
@@ -303,29 +310,36 @@ let arg_loc (n : int) : operand =
     | n -> Ind3 (Lit (Int64.of_int @@ 8 * (n-4)), Rbp)
   end
 
+(* stack a single arg *)
 let stack_arg i uid = (uid, arg_loc i)
 
+(* stack list of args *)
 let rec stack_args i xs =
   begin match xs with
     | [] -> []
     | x::ys -> (stack_arg i x)::stack_args (i+1) ys
   end
 
+(* stack single local *)
 let stack_local (offset:int) (uid:uid) = (uid, Ind3 (Lit (Int64.of_int @@ 8 * (offset)), Rbp))
 
+(* stack intruction list *)
 let rec stack_insns (offset:int) (insns:(uid * insn) list) =
   begin match insns with
     | [] -> []
     | x::xs -> (stack_local offset (fst x))::(stack_insns (offset+1) xs)
   end
 
+(* stack the terninator *)
 let stack_terminator (offset:int) (term:(uid * terminator)) =
   stack_arg offset (fst term)
 
+(* stack a block *)
 let stack_block (offset:int) (blk:block) =
   let term_offset = offset + (List.length blk.insns) in
   stack_insns offset blk.insns @ [stack_terminator term_offset blk.term]
 
+(* stack list of labeled blocks *)
 let rec stack_lbl_blocks (offset:int) (blks:(lbl * block) list) =
   begin match blks with
     | [] -> []
@@ -372,7 +386,7 @@ let rec print_stack (layout :layout) :unit =
      to hold all of the local stack slots.
 *)
 
-
+(* just throw everything on stack and compile blocks *)
 let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let stack = stack_layout f_param f_cfg in
   Printf.printf "\n-----------------\n";
@@ -382,7 +396,7 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
-  [Asm.gtext (Platform.mangle name) entry_blk] @ (List.map compile_blk blks)
+  [Asm.gtext (get_gid name) entry_blk] @ (List.map compile_blk blks)
 
 
 
