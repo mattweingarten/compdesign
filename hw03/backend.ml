@@ -223,7 +223,7 @@ let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * L
 let compile_insn ctxt (uid, i) : X86.ins list =
   begin match i with
     | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
-    | _ -> failwith "binop not yet implented"
+    | _ -> failwith "ins not yet implented"
   end
 
 
@@ -243,6 +243,27 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 *)
 
 
+let is_simple (ty:Ll.ty) =
+  begin match ty with
+    | I64 | I1 | I8 -> true
+    | _ -> false
+  end
+
+let is_aggregate (ty:Ll.ty) =
+  begin match ty with
+    | Array (_,_) | Struct _ -> true
+    | _ -> false
+  end
+
+let is_function (ty:Ll.ty) =
+  begin match ty with
+    | Fun (_,_) -> true
+    | _ -> false
+  end
+
+let is_simple (ty:Ll.ty) = is_simple ty || is_aggregate ty
+
+let is_valid_ptr (ty:Ll.ty) = is_simple ty || is_function ty
 
 let print_option (op: 'a option) :unit =
   begin match op with
@@ -255,22 +276,33 @@ let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
   let open Asm in
   (* deallocate stack (move stack pointer to rbp) and restore old frame pointer *)
   let callee_exit = [Movq, [~%Rbp; ~%Rsp]; Popq, [~%Rbp]] in
+  let compile_op (i:Ll.operand) = [compile_operand ctxt (~%Rax) i] in
   (* put return value in %rax *)
   let exit =
     begin match ret with
       | (Void, _) -> []
-      | (I64, i) | (I8, i) | (I1, i) -> [compile_operand ctxt (~%Rax) (Option.get i)]
-      | (Ptr _, p) -> failwith "ret type not yet implemented"
-      | (Struct t, p) -> failwith "ret type not yet implemented"
-      | (Array (s, t), p) -> failwith "ret type not yet implemented"
-      | (Fun (tys, term), p) -> failwith "ret type not yet implemented"
-      | (Namedt s, p) -> failwith "ret type not yet implemented"
+      | (I64, i) | (I1, i) -> compile_op (Option.get i)
+      | (I8, _) -> failwith "invalid type i8, has to be pointer i8*"
+      | (Ptr t, p) ->
+        if is_valid_ptr t then compile_op (Option.get p)
+        else failwith "invalid pointer type"
+      | (Struct t, p) ->
+        if is_simple (List.hd t) then compile_op (Option.get p)
+        else failwith "invalid struct type"
+      | (Array (s, t), p) ->
+        if is_simple t && s > 0 then compile_op (Option.get p)
+        else failwith "invalid array type"
+      | (Fun (tys, term), p) -> failwith "invalid type Fun, has to be pointer Fun*"
+      | (Namedt s, p) -> compile_op (Option.get p)
     end in
   exit @ callee_exit @ [Retq, []]
 
 let compile_terminator (ctxt :ctxt) t :ins list  =
+  let open Asm in
   begin match (snd t) with
     | Ret (ty, op) -> compile_ret ctxt (ty, op)
+    | Br lbl -> [Jmp, [get ctxt lbl]]
+    | Cbr (op, lbl1, lbl2) -> [compile_operand ctxt ~%Rax op; Cmpq, [~$1; ~%Rax]; J Neq, [get ctxt lbl2]]
     | _ -> failwith "terminator not implemented"
   end
 
@@ -341,7 +373,7 @@ let rec stack_lbl_blocks (offset:int) (blks:(lbl * block) list) =
     | [] -> []
     | x::xs ->
       let curr = (snd x).insns in
-      (stack_block offset (snd x))::stack_lbl_blocks (offset + (List.length curr) + 1) xs
+      [stack_local offset (fst x)]::(stack_block offset (snd x))::stack_lbl_blocks (offset + (List.length curr) + 1) xs
   end
 
 (* We suggest that you create a helper function that computes the
@@ -387,8 +419,11 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let open Asm in
   let callee_entry = [Pushq, [~%Rbp]; Movq, [~%Rsp;~%Rbp]] in
   let stack = stack_layout f_param f_cfg in
-  (* needed stack size is layout size - n_params. Allocate by pointing %rsp to top of stack *)
+  (* needed stack size is layout size - n_params - n_blocks. Allocate by pointing %rsp to top of stack *)
   let allocate_stack = [Subq, [~$(8*(List.length stack - List.length f_param)); ~%Rsp]] in
+  Printf.printf "\n-----------------\n";
+  Printf.printf "Stack:\n";
+  print_stack stack;
   let ctxt = {tdecls=tdecls;layout=stack} in
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
