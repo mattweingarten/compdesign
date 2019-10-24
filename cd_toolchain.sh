@@ -3,7 +3,7 @@
 if [[ "$OSTYPE" == "darwin"* ]]; then
     brew install cmake gcc svn python zlib
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then
-    sudo pacman -Syu --noconfirm cmake gcc svn python 
+    sudo pacman -Syu --noconfirm cmake gcc svn python
 fi
 # llvm and clang
 
@@ -14,10 +14,10 @@ else
     cd ~/llvm_build
 
     wget http://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz
-    tar -xf llvm-9.0.0.src.tar.xz    
+    tar -xf llvm-9.0.0.src.tar.xz
 
     wget http://releases.llvm.org/9.0.0/cfe-9.0.0.src.tar.xz
-    tar -xf cfe-9.0.0.src.tar.xz    
+    tar -xf cfe-9.0.0.src.tar.xz
 
     mv cfe-9.0.0.src llvm-9.0.0.src/tools/clang
 
@@ -25,7 +25,7 @@ else
     cd llvm-build
     cmake -G "Unix Makefiles" ../llvm-9.0.0.src
     -- llvm already installed, only add clang
-    if hash llvm-as 2>/dev/null; then 
+    if hash llvm-as 2>/dev/null; then
         cd tools/clang    --Execute this command only if you have installed llvm before, otherwise ignore this command.
     else
         echo llvm not installed
@@ -35,6 +35,7 @@ else
 fi
 
 # ocaml setup
+ocaml_ver=4.08.1
 if [[ "$OSTYPE" == "darwin"* ]]; then
     brew install opam
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then
@@ -43,15 +44,15 @@ fi
 opam init -a
 eval `opam config env`
 
-if opam switch 4.07.0; then
-    opam switch 4.07.0
+if opam switch $ocaml_ver; then
+    opam switch $ocaml_ver
     echo switch present, just switch
-else 
-    opam switch create 4.07.0
+else
+    opam switch create $ocaml_ver
     echo switch not present, creating
 fi
 
-opam install -y ocaml ocamlbuild core core_extended menhir merlin utop
+opam install -y ocaml ocamlbuild core core_extended menhir merlin utop ocp-indent
 eval `opam config env`
 
 touch ~/.ocamlinit

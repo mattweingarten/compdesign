@@ -5,9 +5,9 @@ open X86
 
 (* Overview ----------------------------------------------------------------- *)
 
-(* We suggest that you spend some time understinging this entire file and 
+(* We suggest that you spend some time understinging this entire file and
    how it fits with the compiler pipeline before making changes.  The suggested
-   plan for implementing the compiler is provided on the project web page. 
+   plan for implementing the compiler is provided on the project web page.
 *)
 
 
@@ -46,7 +46,7 @@ let compile_cnd = function
    'stack layout'.  A stack layout maps a uid to an X86 operand for
    accessing its contents.  For this compilation strategy, the operand
    is always an offset from ebp (in bytes) that represents a storage slot in
-   the stack.  
+   the stack.
 *)
 
 type layout = (uid * X86.operand) list
@@ -60,6 +60,36 @@ type ctxt = { tdecls : (tid * ty) list
 (* useful for looking up items in tdecls or layouts *)
 let lookup m x = List.assoc x m
 
+let get (ctxt:ctxt) (id :uid) :X86.operand =
+  snd @@ List.find (fun (uid, op) -> id = uid) ctxt.layout
+
+(* mangle global id *)
+let get_gid = Platform.mangle
+
+(* get type from tdecls *)
+let get_type (ctxt:ctxt) (id: tid) : Ll.ty =
+  snd @@ List.find (fun (tid, op) -> id = tid) ctxt.tdecls
+
+let is_S (ty:Ll.ty) =
+  begin match ty with
+    | I64 | I1 | Ptr _ -> true
+    | _ -> false
+  end
+
+let is_aggregate (ty:Ll.ty) =
+  begin match ty with
+    | Array (_,_) | Struct _ -> true
+    | _ -> false
+  end
+
+let is_function (ty:Ll.ty) =
+  begin match ty with
+    | Fun (_,_) -> true
+    | _ -> false
+  end
+
+let is_T (ty:Ll.ty) = is_S ty || is_aggregate ty
+
 
 (* compiling operands  ------------------------------------------------------ *)
 
@@ -71,7 +101,7 @@ let lookup m x = List.assoc x m
 
      NOTE: two important facts about global identifiers:
 
-     (1) You should use (Platform.mangle gid) to obtain a string 
+     (1) You should use (Platform.mangle gid) to obtain a string
      suitable for naming a global label on your platform (OS X expects
      "_main" while linux expects "main").
 
@@ -86,16 +116,20 @@ let lookup m x = List.assoc x m
    manipulated by the LLVM IR instruction. You might find it useful to
    implement the following helper function, whose job is to generate
    the X86 instruction that moves an LLVM operand into a designated
-   destination (usually a register).  
+   destination (usually a register).
 *)
-let compile_operand ctxt dest : Ll.operand -> ins =
-  function _ -> failwith "compile_operand unimplemented"
+let compile_operand ctxt (dest:X86.operand) : Ll.operand -> ins = function
+  | Null -> (Movq, [Imm (Lit 0x0L);dest])
+  | Const x -> (Movq, [(Imm (Lit x));dest])
+  | Gid x -> (Leaq, [Ind3 (Lbl (get_gid x), Rip);dest])
+  | Id x -> (Movq, [(get ctxt x);dest])
+
 
 
 
 (* compiling call  ---------------------------------------------------------- *)
 
-(* You will probably find it helpful to implement a helper function that 
+(* You will probably find it helpful to implement a helper function that
    generates code for the LLVM IR call instruction.
 
    The code you generate should follow the x64 System V AMD64 ABI
@@ -128,7 +162,7 @@ let compile_call ctxt fop args =
    the appropriate arithemetic calculations.
 *)
 
-(* [size_ty] maps an LLVMlite type to a size in bytes. 
+(* [size_ty] maps an LLVMlite type to a size in bytes.
     (needed for getelementptr)
 
    - the size of a struct is the sum of the sizes of each component
@@ -140,12 +174,12 @@ let compile_call ctxt fop args =
      Your function should simply return 0 in those cases
 *)
 let rec size_ty tdecls t : int =
-failwith "size_ty not implemented"
+  failwith "size_ty not implemented"
 
 
 
 
-(* Generates code that computes a pointer value.  
+(* Generates code that computes a pointer value.
 
    1. op must be of pointer type: t*
 
@@ -156,26 +190,57 @@ failwith "size_ty not implemented"
 
    4. subsequent indices are interpreted according to the type t:
 
-     - if t is a struct, the index must be a constant n and it 
+   - if t is a struct, the index must be a constant n and it
        picks out the n'th element of the struct. [ NOTE: the offset
-       within the struct of the n'th element is determined by the 
+       within the struct of the n'th element is determined by the
        sizes of the types of the previous elements ]
 
-     - if t is an array, the index can be any operand, and its
+   - if t is an array, the index can be any operand, and its
        value determines the offset within the array.
- 
-     - if t is any other type, the path is invalid
+
+   - if t is any other type, the path is invalid
 
    5. if the index is valid, the remainder of the path is computed as
       in (4), but relative to the type f the sub-element picked out
       by the path so far
 *)
 let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-failwith "compile_gep not implemented"
+  failwith "compile_gep not implemented"
 
 
 
 (* compiling instructions  -------------------------------------------------- *)
+
+(* map ll bop to x86 binop *)
+let map_bop = function
+  | Add -> Addq   | Sub -> Subq   | Mul -> Imulq
+  | Shl -> Shlq   | Lshr -> Shrq  | Ashr -> Sarq
+  | And -> Andq   | Or -> Orq     | Xor -> Xorq
+
+
+(* use rax for dest (caller saved) and rcx for source (caller saved, works with shifts) *)
+let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * Ll.operand * Ll.operand)) =
+  let open Asm in
+  if ty != I64 then failwith @@ "illegal type " ^ Llutil.string_of_ty ty;
+  let load_src = [compile_operand ctxt (~%Rcx) op2] in
+  let load_dst = [compile_operand ctxt (~%Rax) op1] in
+  load_src @ load_dst @ [(map_bop bop, [(~%Rcx);(~%Rax)])] @ [Movq, [~%Rax;(get ctxt uid)]]
+
+(* map ll cnd to x86 cnd *)
+let map_cnd (cnd:Ll.cnd) =
+  begin match cnd with
+    | Eq -> Eq  | Ne -> Neq   | Slt -> Lt
+    | Sle -> Le | Sgt -> Gt   | Sge -> Ge
+  end
+
+
+let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.operand * Ll.operand) =
+  let open Asm in
+  if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty;
+  let load_src = [compile_operand ctxt (~%Rcx) op2] in
+  let load_dst = [compile_operand ctxt (~%Rax) op1] in
+  load_src @ load_dst @ [Cmpq ,[~%Rcx; ~%Rax]; Movq, [~$0x0;get ctxt uid]; Set (map_cnd cnd),[get ctxt uid]]
+
 
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
@@ -199,11 +264,48 @@ failwith "compile_gep not implemented"
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn ctxt (uid, i) : X86.ins list =
-      failwith "compile_insn not implemented"
+  begin match i with
+    | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
+    | Icmp (cnd,ty,op1,op2) -> compile_icmp ctxt uid (cnd,ty,op1,op2)
+    | _ -> failwith "ins not yet implented"
+  end
+
 
 
 
 (* compiling terminators  --------------------------------------------------- *)
+
+
+let print_option (op: 'a option) :unit =
+  begin match op with
+    | Some _ -> Printf.printf "\nSome\n"
+    | None -> Printf.printf "\nNone\n"
+  end
+
+(* compile return terminator *)
+let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
+  let open Asm in
+  let open Llutil in
+  (* deallocate stack (move stack pointer to rbp) and restore old frame pointer *)
+  let callee_exit = [Movq, [~%Rbp; ~%Rsp]; Popq, [~%Rbp]] in
+  let compile_op (i:Ll.operand) = [compile_operand ctxt (~%Rax) i] in
+  (* put return value in %rax *)
+  let rec exit (r:(Ll.ty * Ll.operand option)) =
+    begin match r with
+      | (Void, _) -> []
+      | (I64, i) | (I1, i) -> compile_op (Option.get i)
+      | (Ptr t, p) ->
+        if is_S t then compile_op (Option.get p)
+        else failwith @@ "invalid pointer type" ^ string_of_ty t
+      | (Namedt t, p) -> exit ((get_type ctxt t), p)
+      | (t, _) -> failwith @@ "invalid return type" ^ string_of_ty t
+    end in
+  exit ret @ callee_exit @ [Retq, []]
+
+let compile_jmp_loc (ctxt:ctxt) (lbl:lbl) =
+  let open Asm in
+  [Leaq, [~%Rbp; ~%Rax]; Addq, [get ctxt lbl; ~%Rax]]
+
 
 (* Compile block terminators is not too difficult:
 
@@ -215,18 +317,28 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
    - Cbr branch should treat its operand as a boolean conditional
 *)
-let compile_terminator ctxt t =
-  failwith "compile_terminator not implemented"
 
+let compile_terminator (ctxt :ctxt) t :ins list  =
+  let open Asm in
+  begin match (snd t) with
+    | Ret (ty, op) -> compile_ret ctxt (ty, op)
+    | Br lbl -> [Jmp, [~$$lbl]]
+    | Cbr (op, lbl1, lbl2) -> [compile_operand ctxt ~%Rax op; Andq, [~$0b1;~%Rax]; Cmpq, [~$1; ~%Rax]; J Eq, [~$$lbl1]; Jmp, [~$$lbl2]]
+    | _ -> failwith "terminator not implemented"
+  end
 
 (* compiling blocks --------------------------------------------------------- *)
 
-(* We have left this helper function here for you to complete. *)
+(* compile block and terminator *)
 let compile_block ctxt blk : ins list =
-  failwith "compile_block not implemented"
+  let f = fun insn -> compile_insn ctxt insn in
+  (List.map f blk.insns |> List.flatten) @ compile_terminator ctxt blk.term
+
 
 let compile_lbl_block lbl ctxt blk : elem =
-  Asm.text lbl (compile_block ctxt blk)
+  let result = Asm.text lbl (compile_block ctxt blk) in
+  result
+
 
 
 
@@ -241,21 +353,71 @@ let compile_lbl_block lbl ctxt blk : elem =
    [ NOTE: the first six arguments are numbered 0 .. 5 ]
 *)
 let arg_loc (n : int) : operand =
-failwith "arg_loc not implemented"
+  begin match n with
+    | 0 -> Reg Rdi  | 1 -> Reg Rsi  | 2 -> Reg Rdx
+    | 3 -> Reg Rcx  | 4 -> Reg R08  | 5 -> Reg R09
+    | n -> Ind3 (Lit (Int64.of_int @@ 8 * (n-4)), Rbp)
+  end
 
+(* stack a single arg *)
+let stack_arg i uid = (uid, arg_loc i)
 
-(* We suggest that you create a helper function that computes the 
+(* stack list of args *)
+let rec stack_args i xs =
+  begin match xs with
+    | [] -> []
+    | x::ys -> (stack_arg i x)::stack_args (i+1) ys
+  end
+
+(* stack single local *)
+let stack_local (offset:int) (uid:uid) = (uid, Ind3 (Lit (Int64.of_int @@ -8 * offset), Rbp))
+
+(* stack intruction list *)
+let rec stack_insns (offset:int) (insns:(uid * insn) list) =
+  begin match insns with
+    | [] -> []
+    | x::xs -> (stack_local offset (fst x))::(stack_insns (offset+1) xs)
+  end
+
+(* stack the terninator *)
+let stack_terminator (offset:int) (term:(uid * terminator)) =
+  stack_arg offset (fst term)
+
+(* stack a block *)
+let stack_block (offset:int) (blk:block) =
+  let term_offset = offset + (List.length blk.insns) in
+  stack_insns offset blk.insns @ [stack_terminator term_offset blk.term]
+
+(* stack list of labeled blocks *)
+let rec stack_lbl_blocks (offset:int) (blks:(lbl * block) list) =
+  begin match blks with
+    | [] -> []
+    | x::xs ->
+      let curr = (snd x).insns in
+      (stack_block offset (snd x))::stack_lbl_blocks (offset + (List.length curr) + 1) xs
+  end
+
+(* We suggest that you create a helper function that computes the
    stack layout for a given function declaration.
 
    - each function argument should be copied into a stack slot
-   - in this (inefficient) compilation strategy, each local id 
+   - in this (inefficient) compilation strategy, each local id
      is also stored as a stack slot.
-   - see the discusion about locals 
+   - see the discusion about locals
 
 *)
-let stack_layout args (block, lbled_blocks) : layout =
-failwith "stack_layout not implemented"
+let stack_layout (args:uid list) ((blk, lbled_blocks):cfg) : layout =
+  let entry_offset = 1 in
+  let blks_offset = entry_offset + (List.length blk.insns) + 1 in
+  stack_args 0 args @ stack_block entry_offset blk @ (List.flatten @@ stack_lbl_blocks blks_offset lbled_blocks)
 
+(*Helper function to print out stack*)
+let rec print_stack (layout :layout) :unit =
+
+  begin match layout with
+    | x::xs -> Printf.printf "\n%s: %s \n" (fst x) (X86.string_of_operand @@ snd x); print_stack xs
+    | [] -> Printf.printf "\n-----------------\n"
+  end
 (* The code for the entry-point of a function must do several things:
 
    - since our simple compiler maps local %uids to stack slots,
@@ -272,8 +434,27 @@ failwith "stack_layout not implemented"
    - the function entry code should allocate the stack storage needed
      to hold all of the local stack slots.
 *)
+
+(* just throw everything on stack and compile blocks *)
 let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
-failwith "compile_fdecl unimplemented"
+  let open Asm in
+  let callee_entry = [Pushq, [~%Rbp]; Movq, [~%Rsp;~%Rbp]] in
+  let stack = stack_layout f_param f_cfg in
+  (* needed stack size is layout size - n_params - n_blocks. Allocate by pointing %rsp to top of stack *)
+  let allocate_stack = [Subq, [~$(8*(List.length stack - List.length f_param)); ~%Rsp]] in
+  Printf.printf "\n-----------------\n";
+  Printf.printf "Stack:\n";
+  print_stack stack;
+  let ctxt = {tdecls=tdecls;layout=stack} in
+  let entry_blk = compile_block ctxt (fst f_cfg) in
+  let blks = snd f_cfg in
+  let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
+  [Asm.gtext (get_gid name) (callee_entry @ allocate_stack @ entry_blk)] @ (List.map compile_blk blks)
+
+
+
+
+
 
 
 

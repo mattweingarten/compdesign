@@ -14,3 +14,4 @@ _build
 # hw03 output
 output
 *.s
+*.out
