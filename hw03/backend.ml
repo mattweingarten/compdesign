@@ -76,7 +76,9 @@ let get_displ = function
   | Ind3 (i, r) -> Imm i
   | _ -> failwith "illegal x86 operand"
 
-
+let get_option = function
+  | Some x -> x
+  | None -> failwith "No value in get option"
 (* tests -------------------------------------------------------------------- *)
 let is_S (ty:Ll.ty) =
   begin match ty with
@@ -316,9 +318,9 @@ let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
   let rec exit (r:(Ll.ty * Ll.operand option)) =
     begin match r with
       | (Void, _) -> []
-      | (I64, i) | (I1, i) -> compile_op (Option.get i)
+      | (I64, i) | (I1, i) -> compile_op (get_option i)
       | (Ptr t, p) ->
-        if is_S t then compile_op (Option.get p)
+        if is_S t then compile_op (get_option p)
         else failwith @@ "invalid pointer type " ^ string_of_ty t
       | (Namedt t, p) -> exit ((get_type ctxt t), p)
       | (t, _) -> failwith @@ "invalid return type" ^ string_of_ty t
