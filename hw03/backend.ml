@@ -60,6 +60,7 @@ type ctxt = { tdecls : (tid * ty) list
 (* useful for looking up items in tdecls or layouts *)
 let lookup m x = List.assoc x m
 
+(* getters ------------------------------------------------------------------ *)
 let get (ctxt:ctxt) (id :uid) :X86.operand =
   snd @@ List.find (fun (uid, op) -> id = uid) ctxt.layout
 
@@ -70,6 +71,13 @@ let get_gid = Platform.mangle
 let get_type (ctxt:ctxt) (id: tid) : Ll.ty =
   snd @@ List.find (fun (tid, op) -> id = tid) ctxt.tdecls
 
+(* get displacement from an Ind3 *)
+let get_displ = function
+  | Ind3 (i, r) -> Imm i
+  | _ -> failwith "illegal x86 operand"
+
+
+(* tests -------------------------------------------------------------------- *)
 let is_S (ty:Ll.ty) =
   begin match ty with
     | I64 | I1 | Ptr _ -> true
@@ -241,7 +249,21 @@ let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.ope
   let load_dst = [compile_operand ctxt (~%Rax) op1] in
   load_src @ load_dst @ [Cmpq ,[~%Rcx; ~%Rax]; Movq, [~$0x0;get ctxt uid]; Set (map_cnd cnd),[get ctxt uid]]
 
+(* compute alloca address by adding displacement to address pointed to from %rbp *)
+let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
+  let open Asm in
+  [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]]
 
+
+let compile_store (ctxt:ctxt) (uid:uid) ((t, op1, op2):Ll.ty * Ll.operand * Ll.operand) =
+  let open Asm in
+  if is_S t != true then failwith @@ "illegal store type " ^ Llutil.string_of_ty t;
+  [compile_operand ctxt ~%Rcx op1; compile_operand ctxt ~%Rax op2; Movq, [~%Rcx; Ind2 Rax]]
+
+let compile_load (ctxt:ctxt) (uid:uid) ((t,op):Ll.ty * Ll.operand) =
+  let open Asm in
+  if is_S t != true then failwith @@ "illegal load type " ^ Llutil.string_of_ty t;
+  [compile_operand ctxt ~%Rax op; Leaq, [Ind2 Rax; ~%Rcx]; Movq, [Ind2 Rcx; ~%Rax]; Movq, [~%Rax; get ctxt uid]]
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
    for you. Some of the instructions require only a couple assembly
@@ -267,10 +289,11 @@ let compile_insn ctxt (uid, i) : X86.ins list =
   begin match i with
     | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
     | Icmp (cnd,ty,op1,op2) -> compile_icmp ctxt uid (cnd,ty,op1,op2)
+    | Alloca t -> compile_alloca ctxt uid t
+    | Store (t, op1, op2) -> compile_store ctxt uid (t, op1, op2)
+    | Load (t, op) -> compile_load ctxt uid (t, op)
     | _ -> failwith "ins not yet implented"
   end
-
-
 
 
 (* compiling terminators  --------------------------------------------------- *)
@@ -296,7 +319,7 @@ let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
       | (I64, i) | (I1, i) -> compile_op (Option.get i)
       | (Ptr t, p) ->
         if is_S t then compile_op (Option.get p)
-        else failwith @@ "invalid pointer type" ^ string_of_ty t
+        else failwith @@ "invalid pointer type " ^ string_of_ty t
       | (Namedt t, p) -> exit ((get_type ctxt t), p)
       | (t, _) -> failwith @@ "invalid return type" ^ string_of_ty t
     end in
@@ -441,7 +464,7 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let callee_entry = [Pushq, [~%Rbp]; Movq, [~%Rsp;~%Rbp]] in
   let stack = stack_layout f_param f_cfg in
   (* needed stack size is layout size - n_params - n_blocks. Allocate by pointing %rsp to top of stack *)
-  let allocate_stack = [Subq, [~$(8*(List.length stack - List.length f_param)); ~%Rsp]] in
+  let allocate_stack = [Subq, [~$(8*(List.length stack)); ~%Rsp]] in
   Printf.printf "\n-----------------\n";
   Printf.printf "Stack:\n";
   print_stack stack;
