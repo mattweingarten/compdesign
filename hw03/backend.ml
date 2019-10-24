@@ -70,6 +70,27 @@ let get_gid = Platform.mangle
 let get_type (ctxt:ctxt) (id: tid) : Ll.ty =
   snd @@ List.find (fun (tid, op) -> id = tid) ctxt.tdecls
 
+let is_S (ty:Ll.ty) =
+  begin match ty with
+    | I64 | I1 | Ptr _ -> true
+    | _ -> false
+  end
+
+let is_aggregate (ty:Ll.ty) =
+  begin match ty with
+    | Array (_,_) | Struct _ -> true
+    | _ -> false
+  end
+
+let is_function (ty:Ll.ty) =
+  begin match ty with
+    | Fun (_,_) -> true
+    | _ -> false
+  end
+
+let is_T (ty:Ll.ty) = is_S ty || is_aggregate ty
+
+
 (* compiling operands  ------------------------------------------------------ *)
 
 (* LLVM IR instructions support several kinds of operands.
@@ -196,14 +217,31 @@ let map_bop = function
   | Shl -> Shlq   | Lshr -> Shrq  | Ashr -> Sarq
   | And -> Andq   | Or -> Orq     | Xor -> Xorq
 
+
 (* use rax for dest (caller saved) and rcx for source (caller saved, works with shifts) *)
 let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * Ll.operand * Ll.operand)) =
   let open Asm in
-  let load_src = [compile_operand ctxt (~%Rax) op1] in
-  let load_dst = [compile_operand ctxt (~%Rcx) op2] in
+  if ty != I64 then failwith @@ "illegal type " ^ Llutil.string_of_ty ty;
+  let load_src = [compile_operand ctxt (~%Rcx) op2] in
+  let load_dst = [compile_operand ctxt (~%Rax) op1] in
   load_src @ load_dst @ [(map_bop bop, [(~%Rcx);(~%Rax)])] @ [Movq, [~%Rax;(get ctxt uid)]]
 
-let compile_icmp = ()
+(* map ll cnd to x86 cnd *)
+let map_cnd (cnd:Ll.cnd) =
+  begin match cnd with
+    | Eq -> Eq  | Ne -> Neq   | Slt -> Lt
+    | Sle -> Le | Sgt -> Gt   | Sge -> Ge
+  end
+
+
+let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.operand * Ll.operand) =
+  let open Asm in
+  if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty;
+  let load_src = [compile_operand ctxt (~%Rcx) op2] in
+  let load_dst = [compile_operand ctxt (~%Rax) op1] in
+  load_src @ load_dst @ [Cmpq ,[~%Rcx; ~%Rax]; Movq, [~$0x0;get ctxt uid]; Set (map_cnd cnd),[get ctxt uid]]
+
+
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
    for you. Some of the instructions require only a couple assembly
@@ -228,7 +266,7 @@ let compile_icmp = ()
 let compile_insn ctxt (uid, i) : X86.ins list =
   begin match i with
     | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
-    | Icmp (cnd,ty,op1,op2) -> failwith "icmp not implemented"
+    | Icmp (cnd,ty,op1,op2) -> compile_icmp ctxt uid (cnd,ty,op1,op2)
     | _ -> failwith "ins not yet implented"
   end
 
@@ -237,39 +275,6 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
 (* compiling terminators  --------------------------------------------------- *)
 
-(* Compile block terminators is not too difficult:
-
-   - Ret should properly exit the function: freeing stack space,
-     restoring the value of %rbp, and putting the return value (if
-     any) in %rax.
-
-   - Br should jump
-
-   - Cbr branch should treat its operand as a boolean conditional
-*)
-
-
-let is_simple (ty:Ll.ty) =
-  begin match ty with
-    | I64 | I1 | I8 -> true
-    | _ -> false
-  end
-
-let is_aggregate (ty:Ll.ty) =
-  begin match ty with
-    | Array (_,_) | Struct _ -> true
-    | _ -> false
-  end
-
-let is_function (ty:Ll.ty) =
-  begin match ty with
-    | Fun (_,_) -> true
-    | _ -> false
-  end
-
-let is_T (ty:Ll.ty) = is_simple ty || is_aggregate ty
-
-let is_S (ty:Ll.ty) = is_T ty || is_function ty
 
 let print_option (op: 'a option) :unit =
   begin match op with
@@ -301,12 +306,24 @@ let compile_jmp_loc (ctxt:ctxt) (lbl:lbl) =
   let open Asm in
   [Leaq, [~%Rbp; ~%Rax]; Addq, [get ctxt lbl; ~%Rax]]
 
+
+(* Compile block terminators is not too difficult:
+
+   - Ret should properly exit the function: freeing stack space,
+     restoring the value of %rbp, and putting the return value (if
+     any) in %rax.
+
+   - Br should jump
+
+   - Cbr branch should treat its operand as a boolean conditional
+*)
+
 let compile_terminator (ctxt :ctxt) t :ins list  =
   let open Asm in
   begin match (snd t) with
     | Ret (ty, op) -> compile_ret ctxt (ty, op)
     | Br lbl -> [Jmp, [~$$lbl]]
-    | Cbr (op, lbl1, lbl2) -> [compile_operand ctxt ~%Rax op; Cmpq, [~$1; ~%Rax]; J Eq, [~$$lbl1]; Jmp, [~$$lbl2]]
+    | Cbr (op, lbl1, lbl2) -> [compile_operand ctxt ~%Rax op; Andq, [~$0b1;~%Rax]; Cmpq, [~$1; ~%Rax]; J Eq, [~$$lbl1]; Jmp, [~$$lbl2]]
     | _ -> failwith "terminator not implemented"
   end
 
