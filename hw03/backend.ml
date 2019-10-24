@@ -66,6 +66,10 @@ let get (ctxt:ctxt) (id :uid) :X86.operand =
 (* mangle global id *)
 let get_gid = Platform.mangle
 
+(* get type from tdecls *)
+let get_type (ctxt:ctxt) (id: tid) : Ll.ty =
+  snd @@ List.find (fun (tid, op) -> id = tid) ctxt.tdecls
+
 (* compiling operands  ------------------------------------------------------ *)
 
 (* LLVM IR instructions support several kinds of operands.
@@ -199,6 +203,7 @@ let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * L
   let load_dst = [compile_operand ctxt (~%Rcx) op2] in
   load_src @ load_dst @ [(map_bop bop, [(~%Rcx);(~%Rax)])] @ [Movq, [~%Rax;(get ctxt uid)]]
 
+let compile_icmp = ()
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
    for you. Some of the instructions require only a couple assembly
@@ -223,6 +228,7 @@ let compile_binop (ctxt:ctxt) (uid:uid) ((bop, ty, op1, op2):(Ll.bop * Ll.ty * L
 let compile_insn ctxt (uid, i) : X86.ins list =
   begin match i with
     | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
+    | Icmp (cnd,ty,op1,op2) -> failwith "icmp not implemented"
     | _ -> failwith "ins not yet implented"
   end
 
@@ -261,9 +267,9 @@ let is_function (ty:Ll.ty) =
     | _ -> false
   end
 
-let is_simple (ty:Ll.ty) = is_simple ty || is_aggregate ty
+let is_T (ty:Ll.ty) = is_simple ty || is_aggregate ty
 
-let is_valid_ptr (ty:Ll.ty) = is_simple ty || is_function ty
+let is_S (ty:Ll.ty) = is_T ty || is_function ty
 
 let print_option (op: 'a option) :unit =
   begin match op with
@@ -274,35 +280,33 @@ let print_option (op: 'a option) :unit =
 (* compile return terminator *)
 let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
   let open Asm in
+  let open Llutil in
   (* deallocate stack (move stack pointer to rbp) and restore old frame pointer *)
   let callee_exit = [Movq, [~%Rbp; ~%Rsp]; Popq, [~%Rbp]] in
   let compile_op (i:Ll.operand) = [compile_operand ctxt (~%Rax) i] in
   (* put return value in %rax *)
-  let exit =
-    begin match ret with
+  let rec exit (r:(Ll.ty * Ll.operand option)) =
+    begin match r with
       | (Void, _) -> []
       | (I64, i) | (I1, i) -> compile_op (Option.get i)
-      | (I8, _) -> failwith "invalid type i8, has to be pointer i8*"
       | (Ptr t, p) ->
-        if is_valid_ptr t then compile_op (Option.get p)
-        else failwith "invalid pointer type"
-      | (Struct t, p) ->
-        if is_simple (List.hd t) then compile_op (Option.get p)
-        else failwith "invalid struct type"
-      | (Array (s, t), p) ->
-        if is_simple t && s > 0 then compile_op (Option.get p)
-        else failwith "invalid array type"
-      | (Fun (tys, term), p) -> failwith "invalid type Fun, has to be pointer Fun*"
-      | (Namedt s, p) -> compile_op (Option.get p)
+        if is_S t then compile_op (Option.get p)
+        else failwith @@ "invalid pointer type" ^ string_of_ty t
+      | (Namedt t, p) -> exit ((get_type ctxt t), p)
+      | (t, _) -> failwith @@ "invalid return type" ^ string_of_ty t
     end in
-  exit @ callee_exit @ [Retq, []]
+  exit ret @ callee_exit @ [Retq, []]
+
+let compile_jmp_loc (ctxt:ctxt) (lbl:lbl) =
+  let open Asm in
+  [Leaq, [~%Rbp; ~%Rax]; Addq, [get ctxt lbl; ~%Rax]]
 
 let compile_terminator (ctxt :ctxt) t :ins list  =
   let open Asm in
   begin match (snd t) with
     | Ret (ty, op) -> compile_ret ctxt (ty, op)
-    | Br lbl -> [Jmp, [get ctxt lbl]]
-    | Cbr (op, lbl1, lbl2) -> [compile_operand ctxt ~%Rax op; Cmpq, [~$1; ~%Rax]; J Neq, [get ctxt lbl2]]
+    | Br lbl -> [Jmp, [~$$lbl]]
+    | Cbr (op, lbl1, lbl2) -> [compile_operand ctxt ~%Rax op; Cmpq, [~$1; ~%Rax]; J Eq, [~$$lbl1]; Jmp, [~$$lbl2]]
     | _ -> failwith "terminator not implemented"
   end
 
@@ -349,7 +353,7 @@ let rec stack_args i xs =
   end
 
 (* stack single local *)
-let stack_local (offset:int) (uid:uid) = (uid, Ind3 (Lit (Int64.of_int @@ -8 * (offset)), Rbp))
+let stack_local (offset:int) (uid:uid) = (uid, Ind3 (Lit (Int64.of_int @@ -8 * offset), Rbp))
 
 (* stack intruction list *)
 let rec stack_insns (offset:int) (insns:(uid * insn) list) =
@@ -373,7 +377,7 @@ let rec stack_lbl_blocks (offset:int) (blks:(lbl * block) list) =
     | [] -> []
     | x::xs ->
       let curr = (snd x).insns in
-      [stack_local offset (fst x)]::(stack_block offset (snd x))::stack_lbl_blocks (offset + (List.length curr) + 1) xs
+      (stack_block offset (snd x))::stack_lbl_blocks (offset + (List.length curr) + 1) xs
   end
 
 (* We suggest that you create a helper function that computes the
