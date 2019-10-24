@@ -54,7 +54,7 @@ type layout = (uid * X86.operand) list
 (* A context contains the global type declarations (needed for getelementptr
    calculations) and a stack layout. *)
 type ctxt = { tdecls : (tid * ty) list
-            ; layout : layout
+            ; mutable layout : layout
             }
 
 (* useful for looking up items in tdecls or layouts *)
@@ -79,6 +79,24 @@ let get_displ = function
 let get_option = function
   | Some x -> x
   | None -> failwith "No value in get option"
+
+let get_fresh_stack_address (ctxt:ctxt) :X86.operand =
+ let rec get_fresh_stack_address_rec (l:(uid * X86.operand) list) (curr :int64) :int64 =
+   begin match l with
+     | (_ , X86.Ind3(imm, reg))::xs ->
+          begin match imm with
+            | Lit x -> if  ((compare x curr) < 0) then get_fresh_stack_address_rec xs x
+                                                 else get_fresh_stack_address_rec xs curr
+            | _ -> get_fresh_stack_address_rec xs curr
+          end
+     | _ ::xs -> get_fresh_stack_address_rec xs curr
+     | [] -> Int64.sub curr 8L
+   end
+   in
+   let result_int64 = get_fresh_stack_address_rec ctxt.layout (Int64.neg 8L) in
+   let result_operand = Ind3(Lit result_int64, Rbp) in
+   ctxt.layout <- List.append ctxt.layout [("_allocated_stack_space" , result_operand)]; result_operand
+
 (* tests -------------------------------------------------------------------- *)
 let is_S (ty:Ll.ty) =
   begin match ty with
@@ -254,7 +272,9 @@ let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.ope
 (* compute alloca address by adding displacement to address pointed to from %rbp *)
 let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
   let open Asm in
-  [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]]
+  let new_stack_address = get_fresh_stack_address ctxt in
+  [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ]
+  (* [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]] *)
 
 
 let compile_store (ctxt:ctxt) (uid:uid) ((t, op1, op2):Ll.ty * Ll.operand * Ll.operand) =
@@ -437,12 +457,17 @@ let stack_layout (args:uid list) ((blk, lbled_blocks):cfg) : layout =
   stack_args 0 args @ stack_block entry_offset blk @ (List.flatten @@ stack_lbl_blocks blks_offset lbled_blocks)
 
 (*Helper function to print out stack*)
-let rec print_stack (layout :layout) :unit =
+let print_stack (layout :layout) :unit =
+  let rec print_stack2 (layout :layout) :unit =
+    begin match layout with
+      | x::xs -> Printf.printf "\n%s: %s \n" (fst x) (X86.string_of_operand @@ snd x); print_stack2 xs
+      | [] -> Printf.printf "\n-----------------\n"
+    end
+  in
+  Printf.printf "\n-----------------\n"; Printf.printf "Stack:\n"; print_stack2 layout
 
-  begin match layout with
-    | x::xs -> Printf.printf "\n%s: %s \n" (fst x) (X86.string_of_operand @@ snd x); print_stack xs
-    | [] -> Printf.printf "\n-----------------\n"
-  end
+
+
 (* The code for the entry-point of a function must do several things:
 
    - since our simple compiler maps local %uids to stack slots,
@@ -467,13 +492,16 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let stack = stack_layout f_param f_cfg in
   (* needed stack size is layout size - n_params - n_blocks. Allocate by pointing %rsp to top of stack *)
   let allocate_stack = [Subq, [~$(8*(List.length stack)); ~%Rsp]] in
-  Printf.printf "\n-----------------\n";
-  Printf.printf "Stack:\n";
-  print_stack stack;
+
   let ctxt = {tdecls=tdecls;layout=stack} in
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
+
+
+
+
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
+  print_stack ctxt.layout;
   [Asm.gtext (get_gid name) (callee_entry @ allocate_stack @ entry_blk)] @ (List.map compile_blk blks)
 
 

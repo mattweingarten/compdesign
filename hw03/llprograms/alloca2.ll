@@ -7,4 +7,3 @@ define i64 @main(i64 %argc, i8** %arcv) {
   %4 = load i64, i64* %3
   ret i64 %4
 }
-
