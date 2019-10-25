@@ -68,8 +68,8 @@ let get (ctxt:ctxt) (id :uid) :X86.operand =
 let get_gid = Platform.mangle
 
 (* get type from tdecls *)
-let get_type (ctxt:ctxt) (id: tid) : Ll.ty =
-  snd @@ List.find (fun (tid, op) -> id = tid) ctxt.tdecls
+let get_type (tdecls:(tid * ty) list) (id: tid) : Ll.ty =
+  snd @@ List.find (fun (tid, ty) -> id = tid) tdecls
 
 (* get displacement from an Ind3 *)
 let get_displ = function
@@ -202,7 +202,13 @@ let compile_call ctxt fop args =
      Your function should simply return 0 in those cases
 *)
 let rec size_ty tdecls t : int =
-  failwith "size_ty not implemented"
+  begin match t with
+    | I64   | I1  | Ptr _ -> 8
+    | Struct ts -> List.fold_left (fun acc x-> acc + size_ty tdecls x) 0 ts
+    | Array (n, t) -> n * size_ty tdecls t
+    | Namedt tid -> size_ty tdecls (get_type tdecls tid)
+    | _ -> 0
+  end
 
 
 
@@ -350,7 +356,7 @@ let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
       | (Ptr t, p) ->
         if is_S t then compile_op (get_option p)
         else failwith @@ "invalid pointer type " ^ string_of_ty t
-      | (Namedt t, p) -> exit ((get_type ctxt t), p)
+      | (Namedt t, p) -> exit ((get_type ctxt.tdecls t), p)
       | (t, _) -> failwith @@ "invalid return type" ^ string_of_ty t
     end in
   exit ret @ callee_exit @ [Retq, []]
