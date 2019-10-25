@@ -54,7 +54,7 @@ type layout = (uid * X86.operand) list
 (* A context contains the global type declarations (needed for getelementptr
    calculations) and a stack layout. *)
 type ctxt = { tdecls : (tid * ty) list
-            ; mutable layout : layout
+            ; layout : layout
             }
 
 (* useful for looking up items in tdecls or layouts *)
@@ -80,7 +80,7 @@ let get_option = function
   | Some x -> x
   | None -> failwith "No value in get option"
 
-let get_fresh_stack_address (ctxt:ctxt) :X86.operand =
+(* let get_fresh_stack_address (ctxt:ctxt) :X86.operand =
  let rec get_fresh_stack_address_rec (l:(uid * X86.operand) list) (curr :int64) :int64 =
    begin match l with
      | (_ , X86.Ind3(imm, reg))::xs ->
@@ -95,7 +95,7 @@ let get_fresh_stack_address (ctxt:ctxt) :X86.operand =
    in
    let result_int64 = get_fresh_stack_address_rec ctxt.layout (Int64.neg 8L) in
    let result_operand = Ind3(Lit result_int64, Rbp) in
-   ctxt.layout <- List.append ctxt.layout [("_allocated_stack_space" , result_operand)]; result_operand
+   ctxt.layout <- List.append ctxt.layout [("_allocated_stack_space" , result_operand)]; result_operand *)
 
 (* tests -------------------------------------------------------------------- *)
 let is_S (ty:Ll.ty) =
@@ -272,8 +272,11 @@ let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.ope
 (* compute alloca address by adding displacement to address pointed to from %rbp *)
 let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
   let open Asm in
-  let new_stack_address = get_fresh_stack_address ctxt in
-  [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ]
+  if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty ^ " for alloca";
+  let offset = Imm(Lit (Int64.of_int (-8))) in
+  [(Movq, [~%Rsp;~%Rax]); (Subq, [offset; ~%Rsp]) ; (Movq, [~%Rax; get ctxt uid]) ]
+  (* let new_stack_address = get_fresh_stack_address ctxt in
+  [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ] *)
   (* [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]] *)
 
 
