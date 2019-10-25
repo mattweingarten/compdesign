@@ -81,7 +81,7 @@ let get_option = function
   | None -> failwith "No value in get option"
 
 (* let get_fresh_stack_address (ctxt:ctxt) :X86.operand =
- let rec get_fresh_stack_address_rec (l:(uid * X86.operand) list) (curr :int64) :int64 =
+   let rec get_fresh_stack_address_rec (l:(uid * X86.operand) list) (curr :int64) :int64 =
    begin match l with
      | (_ , X86.Ind3(imm, reg))::xs ->
           begin match imm with
@@ -264,7 +264,7 @@ let map_cnd (cnd:Ll.cnd) =
 
 let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.operand * Ll.operand) =
   let open Asm in
-  if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty;
+  if is_S ty != true then failwith @@ "illegal compare type " ^ Llutil.string_of_ty ty;
   let load_src = [compile_operand ctxt (~%Rcx) op2] in
   let load_dst = [compile_operand ctxt (~%Rax) op1] in
   load_src @ load_dst @ [Cmpq ,[~%Rcx; ~%Rax]; Movq, [~$0x0;get ctxt uid]; Set (map_cnd cnd),[get ctxt uid]]
@@ -273,22 +273,26 @@ let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.ope
 let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
   let open Asm in
   if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty ^ " for alloca";
-  let offset = Imm(Lit (Int64.of_int (-8))) in
-  [(Movq, [~%Rsp;~%Rax]); (Subq, [offset; ~%Rsp]) ; (Movq, [~%Rax; get ctxt uid]) ]
-  (* let new_stack_address = get_fresh_stack_address ctxt in
-  [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ] *)
-  (* [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]] *)
+  [(Movq, [~%Rsp;~%Rax]); (Subq, [~$(-8); ~%Rsp]) ; (Movq, [~%Rax; get ctxt uid]) ]
 
-
+(* put value of op1 at address contained in op2 *)
 let compile_store (ctxt:ctxt) (uid:uid) ((t, op1, op2):Ll.ty * Ll.operand * Ll.operand) =
   let open Asm in
   if is_S t != true then failwith @@ "illegal store type " ^ Llutil.string_of_ty t;
   [compile_operand ctxt ~%Rcx op1; compile_operand ctxt ~%Rax op2; Movq, [~%Rcx; Ind2 Rax]]
 
+(* load value at address contained in op, put on stack at uid *)
 let compile_load (ctxt:ctxt) (uid:uid) ((t,op):Ll.ty * Ll.operand) =
   let open Asm in
   if is_S t != true then failwith @@ "illegal load type " ^ Llutil.string_of_ty t;
   [compile_operand ctxt ~%Rax op; Leaq, [Ind2 Rax; ~%Rcx]; Movq, [Ind2 Rcx; ~%Rax]; Movq, [~%Rax; get ctxt uid]]
+
+(* copy value at op to uid *)
+let compile_bitcast ctxt uid (t1, op, t2) =
+  let open Asm in
+  [compile_operand ctxt ~%Rax op; Movq, [~%Rax;get ctxt uid]]
+
+
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
    for you. Some of the instructions require only a couple assembly
@@ -317,6 +321,7 @@ let compile_insn ctxt (uid, i) : X86.ins list =
     | Alloca t -> compile_alloca ctxt uid t
     | Store (t, op1, op2) -> compile_store ctxt uid (t, op1, op2)
     | Load (t, op) -> compile_load ctxt uid (t, op)
+    | Bitcast (t1, op, t2) -> compile_bitcast ctxt uid (t1, op, t2)
     | _ -> failwith "ins not yet implented"
   end
 
