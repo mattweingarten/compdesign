@@ -181,18 +181,27 @@ let arg_loc (n : int) : operand =
 let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.operand) list)  : X86.ins list =
   let t = fst fop in
   let op = snd fop in
-  if is_S t != true || t = Void then failwith  @@ "invalid return type in call function: " ^ Llutil.string_of_ty t ;
+  if is_S t != true && t != Void then failwith  @@ "invalid return type in call function: " ^ Llutil.string_of_ty t ;
   let calling =
   begin match op with
     | Gid x -> [(Callq, [Imm (Lbl x)])]
     | _ -> failwith "function operand not function name"
   end
   in
-
-
+  
+  let set_up_result (input :X86.ins list) (op:Ll.operand) (t:Ll.ty) (index :int) : X86.ins list =
+    let open X86 in
+    let offset = Imm(Lit (Int64.of_int (-8))) in
+    if (is_S t != true) then failwith  @@ "Invalid input type for call: " ^ Llutil.string_of_ty t;
+    if index <= 5 then List.append input ([compile_operand ctxt (arg_loc index) op])
+    else List.append input [(compile_operand ctxt (Reg Rax) op);
+                            (Movq, [(Reg Rax);(Ind2 Rsp)]);
+                            (Subq, [offset;(Reg Rsp)])
+                           ]
+  in
   let rec setup_args (l :(ty * Ll.operand) list)  (result :X86.ins list) (index :int): X86.ins list =
   begin match l with
-    | (input_t,input_op)::tail -> setup_args tail ((compile_operand ctxt (arg_loc index) input_op :: result)) (index + 1)
+    | (input_t,input_op)::tail -> setup_args tail (set_up_result result input_op input_t index ) (index+1)
     | [] -> result
   end
   in
@@ -202,7 +211,7 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
     | _ -> [(Movq, [Reg Rax; get ctxt uid])]
   end
   in
-  List.append (List.append (setup_args args [] 0 )   calling) ending
+  List.append (List.append  (setup_args args [] 0 )   calling) ending
 
 
 
@@ -590,7 +599,7 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
-  (* print_stack ctxt.layout; *)
+  print_stack ctxt.layout;
   [Asm.gtext (get_gid name) (callee_entry @ allocate_stack @ entry_blk)] @ (List.map compile_blk blks)
 
 
