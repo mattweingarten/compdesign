@@ -13,14 +13,10 @@ open X86
 
 (* helpers ------------------------------------------------------------------ *)
 
-(* Map LL comparison operations to X86 condition codes *)
+(* Map LL comparison operations to x86 condition codes *)
 let compile_cnd = function
-  | Ll.Eq  -> X86.Eq
-  | Ll.Ne  -> X86.Neq
-  | Ll.Slt -> X86.Lt
-  | Ll.Sle -> X86.Le
-  | Ll.Sgt -> X86.Gt
-  | Ll.Sge -> X86.Ge
+  | Ll.Eq  -> X86.Eq    | Ll.Ne  -> X86.Neq     | Ll.Slt -> X86.Lt
+  | Ll.Sle -> X86.Le    | Ll.Sgt -> X86.Gt      | Ll.Sge -> X86.Ge
 
 
 (* locals and layout -------------------------------------------------------- *)
@@ -149,7 +145,7 @@ let is_T (ty:Ll.ty) = is_S ty || is_aggregate ty
 let compile_operand ctxt (dest:X86.operand) : Ll.operand -> ins = function
   | Null -> (Movq, [Imm (Lit 0x0L);dest])
   | Const x -> (Movq, [(Imm (Lit x));dest])
-  | Gid x -> (Leaq, [Ind3 (Lbl (get_gid x), Rip);dest])
+  | Gid x -> (Leaq, [Ind3 (Lbl (get_gid x), Rip); dest])
   | Id x -> (Movq, [(get ctxt x);dest])
 
 
@@ -210,8 +206,58 @@ let rec size_ty tdecls t : int =
     | _ -> 0
   end
 
+(* compile namedt and namedt in recursive types *)
+let rec compile_ty tdecls = function
+  | Namedt tid -> get_type tdecls tid
+  | Ptr t -> Ptr (compile_ty tdecls t)
+  | Struct ts -> Struct (List.map (compile_ty tdecls) ts)
+  | Array (n, t) -> Array (n, compile_ty tdecls t)
+  | Fun (ts, t) -> Fun (List.map (compile_ty tdecls) ts, compile_ty tdecls t)
+  | t -> t
 
+(* get dereferenced type of a pointer *)
+let deref_ty ptr =
+  begin match ptr with
+    | Ptr t -> t
+    | _ -> failwith "invalid pointer"
+  end
 
+(* traverse ops list of a struct up up to m (exclusive), returning the offset up to m *)
+let traverse_struct tdecls (tys:Ll.ty list) (m:int) =
+  let rec helper l n =
+    if n = m then 0
+    else begin match l, n with
+      | [], i -> failwith "index out of bounds"
+      | x::xs, i -> (size_ty tdecls (compile_ty tdecls x)) + helper xs (i+1)
+    end in
+  helper tys 0
+
+(* adapted gepty function to get ins list to compute gep *)
+let gepty_offset ctxt (t:Ll.ty) (o::os:Ll.operand list) : X86.ins list =
+  let open Asm in
+  (* get position in an array from op *)
+  let array_pos op = compile_operand ctxt ~%Rcx op in
+  (* get the type size offset *)
+  let ty_offset t' = Imulq, [~$(size_ty ctxt.tdecls t');~%Rcx] in
+  (* get array pos and offset and add them to rax *)
+  let add_offset op t' = [array_pos op; ty_offset t'; Addq, [~%Rcx; ~%Rax]] in
+  (* gepty recursive call *)
+  let rec gepty' = function
+    | t', [] -> [] (* arrived at el *)
+    | Struct ts, (Const m)::path' ->
+      let m' = Int64.to_int m in
+      let tn = List.nth ts m' in
+      (* size of struct elements preceding the mth element *)
+      let offset = traverse_struct ctxt.tdecls ts m' in
+      (* add to gep, go on *)
+      [Addq, [~$offset;~%Rax]] @ gepty' (compile_ty ctxt.tdecls tn, path')
+    | Array (_, t'), op::path' ->
+      (* add preciding elements' offset, go on *)
+      add_offset op t' @ gepty' (compile_ty ctxt.tdecls t', path')
+    | _, _ -> failwith "invalid path"
+  in
+  (* add offset of first node array *)
+  add_offset o t @ gepty' (t, os)
 
 (* Generates code that computes a pointer value.
 
@@ -239,8 +285,14 @@ let rec size_ty tdecls t : int =
       by the path so far
 *)
 let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-  failwith "compile_gep not implemented"
-
+  let open Asm in
+  (* check op is pointer *)
+  if is_T (fst op) = false then failwith @@ "invalid gep type" ^ Llutil.string_of_ty (fst op);
+  (* load base gep address *)
+  let base = compile_operand ctxt ~%Rax (snd op) in
+  (* compile and dereference op pointer for gepty *)
+  let op_ty = deref_ty (compile_ty ctxt.tdecls (fst op)) in
+  [base] @ gepty_offset ctxt op_ty (path)
 
 
 (* compiling instructions  -------------------------------------------------- *)
@@ -321,6 +373,7 @@ let compile_bitcast ctxt uid (t1, op, t2) =
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn ctxt (uid, i) : X86.ins list =
+  let open Asm in
   begin match i with
     | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
     | Icmp (cnd,ty,op1,op2) -> compile_icmp ctxt uid (cnd,ty,op1,op2)
@@ -328,7 +381,8 @@ let compile_insn ctxt (uid, i) : X86.ins list =
     | Store (t, op1, op2) -> compile_store ctxt uid (t, op1, op2)
     | Load (t, op) -> compile_load ctxt uid (t, op)
     | Bitcast (t1, op, t2) -> compile_bitcast ctxt uid (t1, op, t2)
-    | _ -> failwith "ins not yet implented"
+    | Call (ty, op, ops) -> failwith "call not implemented"
+    | Gep (t, op, ops) -> compile_gep ctxt (t, op) ops @ [Movq, [~%Rax; get ctxt uid]]
   end
 
 
@@ -382,8 +436,8 @@ let compile_terminator (ctxt :ctxt) t :ins list  =
   begin match (snd t) with
     | Ret (ty, op) -> compile_ret ctxt (ty, op)
     | Br lbl -> [Jmp, [~$$lbl]]
-    | Cbr (op, lbl1, lbl2) -> [compile_operand ctxt ~%Rax op; Andq, [~$0b1;~%Rax]; Cmpq, [~$1; ~%Rax]; J Eq, [~$$lbl1]; Jmp, [~$$lbl2]]
-    | _ -> failwith "terminator not implemented"
+    | Cbr (op, lbl1, lbl2) ->
+      [compile_operand ctxt ~%Rax op; Andq, [~$0b1;~%Rax]; Cmpq, [~$1; ~%Rax]; J Eq, [~$$lbl1]; Jmp, [~$$lbl2]]
   end
 
 (* compiling blocks --------------------------------------------------------- *)
@@ -504,18 +558,12 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let open Asm in
   let callee_entry = [Pushq, [~%Rbp]; Movq, [~%Rsp;~%Rbp]] in
   let stack = stack_layout f_param f_cfg in
-  (* needed stack size is layout size - n_params - n_blocks. Allocate by pointing %rsp to top of stack *)
-  let allocate_stack = [Subq, [~$(8*(List.length stack)); ~%Rsp]] in
-
+  (* needed stack size is layout size - n_params. Allocate by pointing %rsp to top of stack *)
+  let allocate_stack = [Subq, [~$(8 * (List.length stack - List.length f_param)); ~%Rsp]] in
   let ctxt = {tdecls=tdecls;layout=stack} in
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
-
-
-
-
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
-  print_stack ctxt.layout;
   [Asm.gtext (get_gid name) (callee_entry @ allocate_stack @ entry_blk)] @ (List.map compile_blk blks)
 
 
