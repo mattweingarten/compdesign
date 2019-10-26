@@ -170,8 +170,39 @@ let compile_operand ctxt (dest:X86.operand) : Ll.operand -> ins = function
    [ NOTE: Don't forget to preserve caller-save registers (only if
    needed). ]
 *)
-let compile_call ctxt fop args =
-  failwith "compile_call not implemented"
+let arg_loc (n : int) : operand =
+  begin match n with
+    | 0 -> Reg Rdi  | 1 -> Reg Rsi  | 2 -> Reg Rdx
+    | 3 -> Reg Rcx  | 4 -> Reg R08  | 5 -> Reg R09
+    | n -> Ind3 (Lit (Int64.of_int @@ 8 * (n-4)), Rbp)
+  end
+
+
+let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.operand) list)  : X86.ins list =
+  let t = fst fop in
+  let op = snd fop in
+  if is_S t != true || t = Void then failwith  @@ "invalid return type in call function: " ^ Llutil.string_of_ty t ;
+  let calling =
+  begin match op with
+    | Gid x -> [(Callq, [Imm (Lbl x)])]
+    | _ -> failwith "function operand not function name"
+  end
+  in
+
+
+  let rec setup_args (l :(ty * Ll.operand) list)  (result :X86.ins list) (index :int): X86.ins list =
+  begin match l with
+    | (input_t,input_op)::tail -> setup_args tail ((compile_operand ctxt (arg_loc index) input_op :: result)) (index + 1)
+    | [] -> result
+  end
+  in
+  let ending =
+  begin match t with
+    | Void -> []
+    | _ -> [(Movq, [Reg Rax; get ctxt uid])]
+  end
+  in
+  List.append (List.append (setup_args args [] 0 )   calling) ending
 
 
 
@@ -381,7 +412,7 @@ let compile_insn ctxt (uid, i) : X86.ins list =
     | Store (t, op1, op2) -> compile_store ctxt uid (t, op1, op2)
     | Load (t, op) -> compile_load ctxt uid (t, op)
     | Bitcast (t1, op, t2) -> compile_bitcast ctxt uid (t1, op, t2)
-    | Call (ty, op, ops) -> failwith "call not implemented"
+    | Call (t, op, args) -> compile_call ctxt uid (t, op) args
     | Gep (t, op, ops) -> compile_gep ctxt (t, op) ops @ [Movq, [~%Rax; get ctxt uid]]
   end
 
@@ -465,12 +496,7 @@ let compile_lbl_block lbl ctxt blk : elem =
 
    [ NOTE: the first six arguments are numbered 0 .. 5 ]
 *)
-let arg_loc (n : int) : operand =
-  begin match n with
-    | 0 -> Reg Rdi  | 1 -> Reg Rsi  | 2 -> Reg Rdx
-    | 3 -> Reg Rcx  | 4 -> Reg R08  | 5 -> Reg R09
-    | n -> Ind3 (Lit (Int64.of_int @@ 8 * (n-4)), Rbp)
-  end
+
 
 (* stack a single arg *)
 let stack_arg i uid = (uid, arg_loc i)
@@ -564,6 +590,7 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
+  (* print_stack ctxt.layout; *)
   [Asm.gtext (get_gid name) (callee_entry @ allocate_stack @ entry_blk)] @ (List.map compile_blk blks)
 
 
