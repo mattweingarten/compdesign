@@ -197,8 +197,6 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
   in
 
   let set_up_result (input :X86.ins list) (op:Ll.operand) (t:Ll.ty) (index :int) : X86.ins list =
-    let open X86 in
-
     if (is_S t != true) then failwith  @@ "Invalid input type for call: " ^ Llutil.string_of_ty t;
     if index <= 5 then List.append input ([compile_operand ctxt (Reg Rax) op ;
                                            (Subq, [offset;(Reg Rsp)]);
@@ -401,8 +399,8 @@ let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.ope
 let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
   let open Asm in
   if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty ^ " for alloca";
-  let offset = Imm(Lit (Int64.of_int (-8))) in
-  [(Subq, [offset; ~%Rsp]); (Movq, [~%Rsp;~%Rax])  ; (Movq, [~%Rax; get ctxt uid]) ]
+  [Pushq, [~$0]; Leaq, [Ind2 Rsp; ~%Rax]; Movq, [~%Rax; get ctxt uid]] 
+(* [(Subq, [offset; ~%Rsp]); (Movq, [~%Rsp;~%Rax])  ; (Movq, [~%Rax; get ctxt uid])] *)
 (* let new_stack_address = get_fresh_stack_address ctxt in
    [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ] *)
 (* [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]] *)
@@ -425,6 +423,8 @@ let compile_bitcast ctxt uid (t1, op, t2) =
   let open Asm in
   [compile_operand ctxt ~%Rax op; Movq, [~%Rax;get ctxt uid]]
 
+let save_callee reg = [Pushq, [reg]]
+let restore_callee reg = [Popq, [reg]]
 
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
@@ -450,14 +450,14 @@ let compile_bitcast ctxt uid (t1, op, t2) =
 let compile_insn ctxt (uid, i) : X86.ins list =
   let open Asm in
   begin match i with
-    | Binop (bop,ty,op1,op2) -> compile_binop ctxt uid (bop, ty, op1, op2)
-    | Icmp (cnd,ty,op1,op2) -> compile_icmp ctxt uid (cnd,ty,op1,op2)
+    | Binop (bop,ty,op1,op2) -> save_callee ~%Rcx @ compile_binop ctxt uid (bop, ty, op1, op2) @ restore_callee ~%Rcx
+    | Icmp (cnd,ty,op1,op2) -> save_callee ~%Rcx @ compile_icmp ctxt uid (cnd,ty,op1,op2) @ restore_callee ~%Rcx
     | Alloca t -> compile_alloca ctxt uid t
-    | Store (t, op1, op2) -> compile_store ctxt uid (t, op1, op2)
-    | Load (t, op) -> compile_load ctxt uid (t, op)
+    | Store (t, op1, op2) -> save_callee ~%Rcx @ compile_store ctxt uid (t, op1, op2) @ restore_callee ~%Rcx
+    | Load (t, op) -> save_callee ~%Rcx @ compile_load ctxt uid (t, op) @ restore_callee ~%Rcx
     | Bitcast (t1, op, t2) -> compile_bitcast ctxt uid (t1, op, t2)
     | Call (t, op, args) -> compile_call ctxt uid (t, op) args
-    | Gep (t, op, ops) -> compile_gep ctxt (t, op) ops @ [Movq, [~%Rax; get ctxt uid]]
+    | Gep (t, op, ops) -> save_callee ~%Rcx @ compile_gep ctxt (t, op) ops @ [Movq, [~%Rax; get ctxt uid]] @ restore_callee ~%Rcx
   end
 
 
