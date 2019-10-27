@@ -183,10 +183,10 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
   let n = List.length args in
   let t = fst fop in
   let op = snd fop in
-  let save_curr_rsp = [(Subq, [offset; Reg Rsp]) ;(Movq, [Reg Rsp;Reg R10])] in
+  let save_curr_rsp = [(Movq, [Reg Rsp;Reg Rbx])] in
   if is_S t != true && t != Void then failwith  @@ "invalid return type in call function: " ^ Llutil.string_of_ty t ;
 
-  let new_arg_loc (i:int) :operand = Ind3 (Lit (Int64.of_int( (i)*(-8))) , R10)
+  let new_arg_loc (i:int) :operand = Ind3 (Lit (Int64.of_int( (i+1)*(-8))) , Rbx)
   in
 
   let calling =
@@ -198,15 +198,7 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
 
   let set_up_result (input :X86.ins list) (op:Ll.operand) (t:Ll.ty) (index :int) : X86.ins list =
     if (is_S t != true) then failwith  @@ "Invalid input type for call: " ^ Llutil.string_of_ty t;
-    if index <= 5 then List.append input ([compile_operand ctxt (Reg Rax) op ;
-                                           (Subq, [offset;(Reg Rsp)]);
-                                           (Movq, [(Reg Rax);(new_arg_loc index)])
-                                          ])
-
-    else List.append input [(compile_operand ctxt (Reg Rax) op);
-                            (Subq, [offset;(Reg Rsp)]);
-                            (Movq, [(Reg Rax);(Ind2 Rsp)])
-                           ]
+     input @ [compile_operand ctxt (Reg Rax) op ;(Pushq, [Reg Rax])]
   in
 
   let rec setup_args_rec (l :(ty * Ll.operand) list)  (result :X86.ins list) (index :int): X86.ins list =
@@ -227,7 +219,6 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
         | x -> (Movq, [new_arg_loc index; arg_loc index]) :: put_args_in_reg_rec (x + 1)
       end
   in
-
   let put_args_in_reg :X86.ins list =
     put_args_in_reg_rec 0
   in
@@ -399,7 +390,7 @@ let compile_icmp (ctxt:ctxt) (uid:uid) ((cnd,ty,op1,op2):Ll.cnd * Ll.ty * Ll.ope
 let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
   let open Asm in
   if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty ^ " for alloca";
-  [Pushq, [~$0]; Leaq, [Ind2 Rsp; ~%Rax]; Movq, [~%Rax; get ctxt uid]] 
+  [Pushq, [~$0]; Leaq, [Ind2 Rsp; ~%Rax]; Movq, [~%Rax; get ctxt uid]]
 (* [(Subq, [offset; ~%Rsp]); (Movq, [~%Rsp;~%Rax])  ; (Movq, [~%Rax; get ctxt uid])] *)
 (* let new_stack_address = get_fresh_stack_address ctxt in
    [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ] *)
