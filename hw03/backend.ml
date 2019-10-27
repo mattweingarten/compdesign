@@ -190,10 +190,10 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
   in
 
   let calling =
-  begin match op with
-    | Gid x -> [(Callq, [Imm (Lbl x)])]
-    | _ -> failwith "function operand not function name"
-  end
+    begin match op with
+      | Gid x -> [(Callq, [Imm (Lbl (get_gid x))])]
+      | _ -> failwith "function operand not function name"
+    end
   in
 
   let set_up_result (input :X86.ins list) (op:Ll.operand) (t:Ll.ty) (index :int) : X86.ins list =
@@ -201,8 +201,8 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
 
     if (is_S t != true) then failwith  @@ "Invalid input type for call: " ^ Llutil.string_of_ty t;
     if index <= 5 then List.append input ([compile_operand ctxt (Reg Rax) op ;
-                                          (Subq, [offset;(Reg Rsp)]);
-                                          (Movq, [(Reg Rax);(new_arg_loc index)])
+                                           (Subq, [offset;(Reg Rsp)]);
+                                           (Movq, [(Reg Rax);(new_arg_loc index)])
                                           ])
 
     else List.append input [(compile_operand ctxt (Reg Rax) op);
@@ -212,10 +212,10 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
   in
 
   let rec setup_args_rec (l :(ty * Ll.operand) list)  (result :X86.ins list) (index :int): X86.ins list =
-  begin match l with
-    | (input_t,input_op)::tail -> setup_args_rec tail (set_up_result result input_op input_t index ) (index+1)
-    | [] -> result
-  end
+    begin match l with
+      | (input_t,input_op)::tail -> setup_args_rec tail (set_up_result result input_op input_t index ) (index+1)
+      | [] -> result
+    end
   in
 
   let setup_args (args :(ty * Ll.operand) list): X86.ins list =
@@ -224,10 +224,10 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
 
   let rec put_args_in_reg_rec (index: int): X86.ins list =
     if index >= n then [] else
-    begin match index with
-      | 6 -> []
-      | x -> (Movq, [new_arg_loc index; arg_loc index]) :: put_args_in_reg_rec (x + 1)
-    end
+      begin match index with
+        | 6 -> []
+        | x -> (Movq, [new_arg_loc index; arg_loc index]) :: put_args_in_reg_rec (x + 1)
+      end
   in
 
   let put_args_in_reg :X86.ins list =
@@ -235,10 +235,10 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
   in
 
   let ending =
-  begin match t with
-    | Void -> []
-    | _ -> [(Movq, [Reg Rax; get ctxt uid])]
-  end
+    begin match t with
+      | Void -> []
+      | _ -> [(Movq, [Reg Rax; get ctxt uid])]
+    end
   in
 
   save_curr_rsp @ setup_args args  @ put_args_in_reg @ calling @ ending
@@ -403,9 +403,9 @@ let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
   if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty ^ " for alloca";
   let offset = Imm(Lit (Int64.of_int (-8))) in
   [(Subq, [offset; ~%Rsp]); (Movq, [~%Rsp;~%Rax])  ; (Movq, [~%Rax; get ctxt uid]) ]
-  (* let new_stack_address = get_fresh_stack_address ctxt in
-  [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ] *)
-  (* [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]] *)
+(* let new_stack_address = get_fresh_stack_address ctxt in
+   [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ] *)
+(* [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]] *)
 
 
 (* put value of op1 at address contained in op2 *)
