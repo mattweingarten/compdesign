@@ -183,39 +183,69 @@ let arg_loc (n : int) : operand =
 
 
 let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.operand) list)  : X86.ins list =
+  let offset = Imm(Lit (Int64.of_int (8))) in
+  let n = List.length args in
   let t = fst fop in
   let op = snd fop in
+  let save_curr_rsp = [(Subq, [offset; Reg Rsp]) ;(Movq, [Reg Rsp;Reg R10])] in
   if is_S t != true && t != Void then failwith  @@ "invalid return type in call function: " ^ Llutil.string_of_ty t ;
+
+  let new_arg_loc (i:int) :operand = Ind3 (Lit (Int64.of_int( (i)*(-8))) , R10)
+  in
+
   let calling =
   begin match op with
     | Gid x -> [(Callq, [Imm (Lbl x)])]
     | _ -> failwith "function operand not function name"
   end
   in
-  
+
   let set_up_result (input :X86.ins list) (op:Ll.operand) (t:Ll.ty) (index :int) : X86.ins list =
     let open X86 in
-    let offset = Imm(Lit (Int64.of_int (-8))) in
+
     if (is_S t != true) then failwith  @@ "Invalid input type for call: " ^ Llutil.string_of_ty t;
-    if index <= 5 then List.append input ([compile_operand ctxt (arg_loc index) op])
+    if index <= 5 then List.append input ([compile_operand ctxt (Reg Rax) op ;
+                                          (Subq, [offset;(Reg Rsp)]);
+                                          (Movq, [(Reg Rax);(new_arg_loc index)])
+                                          ])
+
     else List.append input [(compile_operand ctxt (Reg Rax) op);
-                            (Movq, [(Reg Rax);(Ind2 Rsp)]);
-                            (Subq, [offset;(Reg Rsp)])
+                            (Subq, [offset;(Reg Rsp)]);
+                            (Movq, [(Reg Rax);(Ind2 Rsp)])
                            ]
   in
-  let rec setup_args (l :(ty * Ll.operand) list)  (result :X86.ins list) (index :int): X86.ins list =
+
+  let rec setup_args_rec (l :(ty * Ll.operand) list)  (result :X86.ins list) (index :int): X86.ins list =
   begin match l with
-    | (input_t,input_op)::tail -> setup_args tail (set_up_result result input_op input_t index ) (index+1)
+    | (input_t,input_op)::tail -> setup_args_rec tail (set_up_result result input_op input_t index ) (index+1)
     | [] -> result
   end
   in
+
+  let setup_args (args :(ty * Ll.operand) list): X86.ins list =
+    setup_args_rec args [] 0
+  in
+
+  let rec put_args_in_reg_rec (index: int): X86.ins list =
+    if index >= n then [] else
+    begin match index with
+      | 6 -> []
+      | x -> (Movq, [new_arg_loc index; arg_loc index]) :: put_args_in_reg_rec (x + 1)
+    end
+  in
+
+  let put_args_in_reg :X86.ins list =
+    put_args_in_reg_rec 0
+  in
+
   let ending =
   begin match t with
     | Void -> []
     | _ -> [(Movq, [Reg Rax; get ctxt uid])]
   end
   in
-  List.append (List.append  (setup_args args [] 0 )   calling) ending
+
+  save_curr_rsp @ setup_args args  @ put_args_in_reg @ calling @ ending
 
 
 
@@ -314,7 +344,7 @@ let compile_alloca (ctxt:ctxt) (uid:uid) (ty:Ll.ty) =
   let open Asm in
   if is_S ty != true then failwith @@ "illegal type " ^ Llutil.string_of_ty ty ^ " for alloca";
   let offset = Imm(Lit (Int64.of_int (-8))) in
-  [(Movq, [~%Rsp;~%Rax]); (Subq, [offset; ~%Rsp]) ; (Movq, [~%Rax; get ctxt uid]) ]
+  [(Subq, [offset; ~%Rsp]); (Movq, [~%Rsp;~%Rax])  ; (Movq, [~%Rax; get ctxt uid]) ]
   (* let new_stack_address = get_fresh_stack_address ctxt in
   [(Leaq, [new_stack_address;~%Rax]); (Movq, [~%Rax; get ctxt uid]) ] *)
   (* [Leaq, [get ctxt uid; ~%Rax]; Movq, [~%Rax; get ctxt uid]] *)
