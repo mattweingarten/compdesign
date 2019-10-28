@@ -177,6 +177,18 @@ let arg_loc (n : int) : operand =
     | n -> Ind3 (Lit (Int64.of_int @@ 8 * (n-4)), Rbp)
   end
 
+let caller_save =
+  let open Asm in
+  [Pushq, [~%Rax]; Pushq, [~%Rdx]; Pushq, [~%Rcx];
+   Pushq, [~%Rsi]; Pushq, [~%Rdi]; Pushq, [~%R08];
+   Pushq, [~%R09]; Pushq, [~%R10]; Pushq, [~%R11]]
+
+let restore_caller_save =
+  let open Asm in
+  [Popq, [~%R11]; Popq, [~%R10]; Popq, [~%R09];
+   Popq, [~%R08]; Popq, [~%Rdi]; Popq, [~%Rsi];
+   Popq, [~%Rcx]; Popq, [~%Rdx]; Popq, [~%Rax]]
+
 
 let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.operand) list)  : X86.ins list =
   let offset = Imm(Lit (Int64.of_int (8))) in
@@ -198,7 +210,7 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
 
   let set_up_result (input :X86.ins list) (op:Ll.operand) (t:Ll.ty) (index :int) : X86.ins list =
     if (is_S t != true) then failwith  @@ "Invalid input type for call: " ^ Llutil.string_of_ty t;
-     input @ [compile_operand ctxt (Reg Rax) op ;(Pushq, [Reg Rax])]
+    input @ [compile_operand ctxt (Reg Rax) op ;(Pushq, [Reg Rax])]
   in
 
   let rec setup_args_rec (l :(ty * Ll.operand) list)  (result :X86.ins list) (index :int): X86.ins list =
@@ -230,7 +242,12 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
     end
   in
 
-  save_curr_rsp @ setup_args args  @ put_args_in_reg @ calling @ ending
+  let clean_args =
+    let open Asm in
+    let n = max 0 (List.length args - 5) in
+    [Addq, [~$(n * 8);~%Rsp]] in
+
+  caller_save @ save_curr_rsp @ setup_args args  @ put_args_in_reg @ calling @ ending @ clean_args @ restore_caller_save
 
 
 
