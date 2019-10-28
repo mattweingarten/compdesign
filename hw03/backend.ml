@@ -191,7 +191,6 @@ let restore_caller_save =
 
 
 let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.operand) list)  : X86.ins list =
-  let offset = Imm(Lit (Int64.of_int (8))) in
   let n = List.length args in
   let t = fst fop in
   let op = snd fop in
@@ -246,7 +245,7 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
     let open Asm in
     [Addq, [~$(n * 8);~%Rsp]] in
 
-   caller_save @ save_curr_rsp    @ setup_args args  @ put_args_in_reg @ calling @ ending @ clean_args @ restore_caller_save
+  caller_save @ save_curr_rsp @ setup_args args @ put_args_in_reg @ calling @ ending @ clean_args @ restore_caller_save
 
 
 
@@ -470,13 +469,6 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
 (* compiling terminators  --------------------------------------------------- *)
 
-
-let print_option (op: 'a option) :unit =
-  begin match op with
-    | Some _ -> Printf.printf "\nSome\n"
-    | None -> Printf.printf "\nNone\n"
-  end
-
 (* compile return terminator *)
 let compile_ret (ctxt:ctxt) (ret:(Ll.ty * Ll.operand option)) : ins list =
   let open Asm in
@@ -601,6 +593,7 @@ let stack_layout (args:uid list) ((blk, lbled_blocks):cfg) : layout =
   let blks_offset = entry_offset + (List.length blk.insns) + 1 in
   stack_args 0 args @ stack_block entry_offset blk @ (List.flatten @@ stack_lbl_blocks blks_offset lbled_blocks)
 
+  (*
 (*Helper function to print out stack*)
 let print_stack (layout :layout) :unit =
   let rec print_stack2 (layout :layout) :unit =
@@ -610,8 +603,7 @@ let print_stack (layout :layout) :unit =
     end
   in
   Printf.printf "\n-----------------\n"; Printf.printf "Stack:\n"; print_stack2 layout
-
-
+  *)
 
 (* The code for the entry-point of a function must do several things:
 
@@ -641,7 +633,6 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   let entry_blk = compile_block ctxt (fst f_cfg) in
   let blks = snd f_cfg in
   let compile_blk = fun (lbl, block) -> compile_lbl_block lbl ctxt block in
-  print_stack ctxt.layout;
   [Asm.gtext (get_gid name) (callee_entry @ allocate_stack @ entry_blk)] @ (List.map compile_blk blks)
 
 
