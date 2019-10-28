@@ -195,10 +195,10 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
   let n = List.length args in
   let t = fst fop in
   let op = snd fop in
-  let save_curr_rsp = [(Movq, [Reg Rsp;Reg Rbx])] in
+  let save_curr_rsp = [(Movq, [Reg Rsp;Reg R10])] in
   if is_S t != true && t != Void then failwith  @@ "invalid return type in call function: " ^ Llutil.string_of_ty t ;
 
-  let new_arg_loc (i:int) :operand = Ind3 (Lit (Int64.of_int( (i+1)*(-8))) , Rbx)
+  let new_arg_loc (i:int) :operand = Ind3 (Lit (Int64.of_int( (i+1)*(-8))) , R10)
   in
 
   let calling =
@@ -244,10 +244,9 @@ let compile_call (ctxt :ctxt) (uid:uid) (fop : ty * Ll.operand) (args :(ty * Ll.
 
   let clean_args =
     let open Asm in
-    let n = max 0 (List.length args - 5) in
     [Addq, [~$(n * 8);~%Rsp]] in
 
-  caller_save @ save_curr_rsp @ setup_args args  @ put_args_in_reg @ calling @ ending @ clean_args @ restore_caller_save
+   caller_save @ save_curr_rsp    @ setup_args args  @ put_args_in_reg @ calling @ ending @ clean_args @ restore_caller_save
 
 
 
