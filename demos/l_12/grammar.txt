@@ -1,0 +1,76 @@
+IMP GRAMMAR VERSION 1:    (has 'dangling else' problem)
+
+
+<const> ::=
+  <int64>       // constant
+
+<bop> ::=       // binary operations
+  | +
+  | -
+  | *
+  
+
+<exp> ::=
+  | <const>
+  | <exp> <bop> <exp>
+  | ( <exp> )
+
+<stmt> ::=
+  | int <ident> = <exp> ;
+  | <ident> = <exp> ;
+  | if ( <exp> ) <stmt>
+  | if ( <exp> ) <stmt> else <stmt>
+  | while ( <exp> ) <stmt>
+  | { <stmt>* }
+
+<prog> ::=
+  <stmt>*
+
+
+
+
+- Ambiguity of 'dangling else' can be addressed by factoring
+  statements into 'unmatched' ifs and 'matched' ifs.
+
+- Ambiguity in the expression syntax can be addressed by
+  precedence and associativity rules.
+
+
+========================================================================
+
+IMP GRAMMAR VERSION 2:    (has scoped conditional blocks)
+
+<const> ::=
+  <int64>       // constant
+
+<bop> ::=       // binary operations
+  | +
+  | -
+  | *
+  
+
+<exp> ::=
+  | <const>
+  | <exp> <bop> <exp>
+  | ( <exp> )
+
+<stmt> ::=
+  | int <ident> = <exp> ;
+  | ident = <exp> ;
+  | <ifstmt>
+  | while ( <exp> ) <stmt>
+
+<if_stmt> ::=
+  | if ( <exp> ) block <else_stmt>
+
+<else_stmt> ::=
+  |               /* nothing */
+  | else <if_stmt>
+  | else <block>
+
+
+<block> ::=
+  <stmt>*
+
+<prog> ::=
+  <block>

@@ -1,0 +1,26 @@
+/* An example of what happens if you require brackets for if-then-else */
+
+if (c1) {
+
+} else {
+if (c2) {
+
+} else {
+if (c3) {
+
+} else {
+
+}}}
+
+
+/* ------------------------------------------ */
+
+if (c1) {
+
+} else if (c2) {
+
+} else if (c3) {
+
+} else {
+
+}
