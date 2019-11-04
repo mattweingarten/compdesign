@@ -137,7 +137,6 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
 let gensym : string -> string =
   let c = ref 0 in
   fun (s:string) -> incr c; Printf.sprintf "_%s%d" s (!c)
-
 (* Amount of space an Oat type takes when stored in the satck, in bytes.
    Note that since structured values are manipulated by reference, all
    Oat values take 8 bytes on the stack.
@@ -156,8 +155,9 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
     ; ans_id, Bitcast(arr_ty, Id arr_id, ans_ty) ]
 
 
-
-
+let fst3 ((x: 'a), (y: 'b) ,(z: 'c)): 'a =  x
+let snd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'b =  y
+let thd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'c =  z
 (* Compiles an expression exp in context c, outputting the Ll operand that will
    recieve the value of the expression, and the stream of instructions
    implementing the expression.
@@ -179,7 +179,51 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
 
 *)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-  failwith "cmp_exp unimplemented"
+
+  let match_binop (op:Ast.binop) :Ll.bop =
+    begin match op with
+     | Add -> Ll.Add
+     | Sub -> Ll.Sub
+     | And -> Ll.And
+     | Or -> Ll.Or
+     | Shl -> Ll.Shl
+     | Shr -> Ll.Lshr
+     | Sar -> Ll.Ashr
+     | _ -> failwith "unimplemented binop"
+    end
+  in
+
+  let match_unop (op:Ast.unop) :unit =
+    failwith "unimplented unop"
+  in
+  let cmp_binop (op:binop) (e1:exp node) (e2: exp node) : Ll.ty * Ll.operand * stream =
+    let t = cmp_ty @@ thd3 @@ typ_of_binop op in
+    let cmp_e1 = cmp_exp c e1 in
+    let cmp_e2 = cmp_exp c e2 in
+    let stream1 = thd3 cmp_e1 in
+    let stream2 = thd3 cmp_e2 in
+    let operand1 = snd3 cmp_e1 in
+    let operand2 = snd3 cmp_e2 in
+    let new_symbol = gensym "x" in
+    let curr_stream = [I (new_symbol, Binop (match_binop op,t,operand1, operand2))] in
+    (t,Ll.Id new_symbol, stream1 @ stream2 @ curr_stream)
+  in
+
+
+  begin match exp.elt with
+    | CNull t -> (cmp_ty t, Null, [])
+    | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
+    | CInt i -> (I64, Const i, [])
+    | CStr s -> failwith "unimplemented"
+    | CArr _ -> failwith "unimplemented"
+    | NewArr _ -> failwith "unimplemented"
+    | Id _ -> failwith "unimplemented"
+    | Index _ -> failwith "unimplemented"
+    | Call _ -> failwith "unimplemented"
+    | Bop (op, e1, e2) -> cmp_binop op e1 e2
+
+    | Uop (op, e) -> failwith "unimplemented"
+  end
 
 
 (* Compile a statement in context c with return typ rt. Return a new context,
@@ -209,7 +253,20 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
  *)
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  failwith "cmp_stmt not implemented"
+  let cmp_ret (op :exp node option):Ctxt.t * stream =
+    begin match op with
+      | Some x -> let e = cmp_exp c x in begin match e with | (t,o,s) -> (c, [T (Ret (t, Some o))] @ s) end
+      | None -> (c, [T (Ret (Void, None))])
+    end in
+  begin match stmt.elt with
+    | Assn (x,y) -> failwith "unimplented"
+    | Decl x -> failwith "unimplented"
+    | Ret x -> cmp_ret x
+    | SCall (x,es) -> failwith "unimplented"
+    | If _ -> failwith "unimplented"
+    | For _ -> failwith "unimplented"
+    | While _ -> failwith "unimplented"
+  end
 
 
 (* Compile a series of statements *)
@@ -270,7 +327,17 @@ List.fold_left (fun c -> function
    4. Use cfg_of_stream to produce a LLVMlite cfg from
  *)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_fdecl not implemented"
+  let unkown = [] in
+  let f_type = (List.map(fun x -> cmp_ty  @@ fst x) f.elt.args, cmp_ret_ty  f.elt.frtyp) in
+  let name = f.elt.fname in
+  let params = List.map(fun x -> snd x) f.elt.args in
+  let cfg = fst @@ cfg_of_stream  @@ cmp_block c (snd f_type) f.elt.body in
+  {f_ty=f_type;f_param=params;f_cfg=cfg} , unkown
+
+
+  (* AST : type fdecl = { frtyp : ret_ty; fname : id; args : (ty * id) list; body : block } *)
+(* LL: type fdecl = { f_ty : fty; f_param : uid list; f_cfg : cfg } *)
+(*LL: type cfg = block * (lbl * block) list *)
 
 
 (* Compile a global initializer, returning the resulting LLVMlite global
