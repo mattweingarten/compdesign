@@ -1,4 +1,3 @@
 int program (int argc, string[] argv) {
-  var x = 17 + 18;
-  return x;
+  return 17 + 18;
 }

@@ -211,7 +211,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let op2 = snd3 cmp_e2 in
     let new_symbol = gensym "b" in (*Use b for binop variable*)
     let curr_stream = [I (new_symbol, match_binop op t op1 op2)] in
-    (t,Ll.Id new_symbol, stream1 @ stream2 @ curr_stream)
+    (t,Ll.Id new_symbol, curr_stream @ stream1 @ stream2)
   in
 
   let match_unop (op:Ast.unop) (t:Ll.ty) (op1:Ll.operand) :Ll.insn =
@@ -229,7 +229,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let op1 = snd3 cmp_e1 in
     let new_symbol = gensym "u" in (*Use u for binop variable*)
     let curr_stream = [I (new_symbol, match_unop op t op1)] in
-    (t,Ll.Id new_symbol, stream1  @ curr_stream)
+    (t,Ll.Id new_symbol,  curr_stream @ stream1 )
   in
 
   let cmp_id (id:Ast.id) : Ll.ty * Ll.operand * stream =
@@ -366,11 +366,24 @@ List.fold_left (fun c -> function
    4. Use cfg_of_stream to produce a LLVMlite cfg from
  *)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
+
   let unkown = [] in
   let f_type = (List.map(fun x -> cmp_ty  @@ fst x) f.elt.args, cmp_ret_ty  f.elt.frtyp) in
   let name = f.elt.fname in
   let params = List.map(fun x -> snd x) f.elt.args in
-  let cfg = fst @@ cfg_of_stream  @@ cmp_block c (snd f_type) f.elt.body in
+  let new_symbols = List.map(fun _ ->  gensym "pa*") f.elt.args in
+  let allocate_params =  List.flatten @@ List.map(fun ( (t_ast, id) , new_sym)  ->
+                         let t = cmp_ty t_ast in
+                         [
+                          I((gensym "s",Store(t,Id id,Id new_sym)));
+                          I((new_sym),Alloca t)
+                         ]) (List.combine f.elt.args new_symbols) in
+  let new_ctxt = List.fold_left ( fun c ((t_ast, id), new_sym) ->
+                                  Ctxt.add c id (cmp_ty t_ast, Id new_sym)
+                                )
+  c (List.combine f.elt.args new_symbols)
+  in
+  let cfg = fst @@ cfg_of_stream  @@ (cmp_block new_ctxt (snd f_type) f.elt.body) @ allocate_params in
   {f_ty=f_type;f_param=params;f_cfg=cfg} , unkown
 
 
@@ -397,7 +410,7 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
     | CNull t -> ((cmp_ty t, GNull), [])
     | CBool b -> if b = true then ((I1, GInt 1L), []) else ((I1, GInt 0L), [])
     | CInt i -> ((I64, GInt i), [])
-    | CStr s -> ((I8, GString s), [])
+    | CStr s -> ((Ptr I8, GString s), [])
     | CArr (t, es) -> failwith "unimplemented global array declaration"
     | x -> failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e ^ "for global declarations."
   end
