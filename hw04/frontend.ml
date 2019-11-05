@@ -232,6 +232,11 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     (t,Ll.Id new_symbol, stream1  @ curr_stream)
   in
 
+  let cmp_id (id:Ast.id) : Ll.ty * Ll.operand * stream =
+    let t, operand = Ctxt.lookup id c in
+    let sym = gensym "l" in (*l for load instructions*)
+    (t, Id sym, [I(sym, Load (t, operand))])
+  in
   begin match exp.elt with
     | CNull t -> (cmp_ty t, Null, [])
     | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
@@ -239,7 +244,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | CStr s -> failwith "unimplemented"
     | CArr _ -> failwith "unimplemented"
     | NewArr _ -> failwith "unimplemented"
-    | Id _ -> failwith "unimplemented"
+    | Id id -> cmp_id id
     | Index _ -> failwith "unimplemented"
     | Call _ -> failwith "unimplemented"
     | Bop (op, e1, e2) -> cmp_binop op e1 e2
@@ -276,12 +281,25 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_ret (op :exp node option):Ctxt.t * stream =
     begin match op with
-      | Some x -> let e = cmp_exp c x in begin match e with | (t,o,s) -> (c, [T (Ret (t, Some o))] @ s) end
+      | Some x -> let t,o,s = cmp_exp c x in (c, [T (Ret (t, Some o))] @ s)
       | None -> (c, [T (Ret (Void, None))])
-    end in
+    end
+  in
+
+  (*TODO:In declaration also ad index into array *)
+  let cmp_dec (id: Ast.id) (e:exp node) :Ctxt.t * stream =
+    let t , operand , str   = cmp_exp c e in
+    let new_symbol_a = gensym "a*"  in(*use a for alloca pointers*)
+    let new_symbol_s = gensym "s" in (*use s for store*)
+    let new_str =  [I(new_symbol_s, Store (t, operand,Id new_symbol_a));
+                         I(new_symbol_a, Alloca (Ptr t))
+                   ] @ str in
+    let new_ctxt = Ctxt.add c id (Ptr t, Id new_symbol_a) in
+    (new_ctxt, new_str)
+  in
   begin match stmt.elt with
     | Assn (x,y) -> failwith "unimplented"
-    | Decl x -> failwith "unimplented"
+    | Decl (id,e) -> cmp_dec id e
     | Ret x -> cmp_ret x
     | SCall (x,es) -> failwith "unimplented"
     | If _ -> failwith "unimplented"
@@ -324,7 +342,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    | CNull t -> cmp_ty t
    | CBool _ -> I1
    | CInt _ -> I64
-   | CStr _ -> I8
+   | CStr _ -> Ptr I8
    | CArr (_,_) -> failwith "Array unimplemented"
    | _ -> failwith  "Invalid  expression for global declarations."
   end
