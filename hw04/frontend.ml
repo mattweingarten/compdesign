@@ -222,7 +222,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     end
   in
 
-  let cmp_unop (op:unop) (e1:exp node): Ll.ty * Ll.operand * stream =
+  let cmp_unop (op:unop) (e1:exp node) :Ll.ty * Ll.operand * stream =
     let t = cmp_ty @@ snd @@ typ_of_unop op in
     let cmp_e1 = cmp_exp c e1 in
     let stream1 = thd3 cmp_e1 in
@@ -235,8 +235,21 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   let cmp_id (id:Ast.id) : Ll.ty * Ll.operand * stream =
     let t, operand = Ctxt.lookup id c in
     let sym = gensym "l" in (*l for load instructions*)
-    (t, Id sym, [I(sym, Load (t, operand))])
+    (t, Id sym, [I(sym, Load (Ptr t, operand))])
   in
+
+  let cmp_call (e: exp node) (es:exp node list) :Ll.ty * Ll.operand * stream=
+    let id = begin match e.elt with | Id id-> id | _ -> failwith "invalid call function" end in
+    let cmp_es = List.map(fun e -> cmp_exp c e ) es in
+    let t1,fname = Ctxt.lookup_function id c in
+    let ret_t = begin match t1 with |  Ptr (Fun (_,ret_t)) -> ret_t | _ -> failwith "invalid function lookup"  end in
+    let new_sym = gensym "c" in
+    let args_list =  List.map(fun (t,op,_) -> (t,op)) cmp_es in
+    let initial = [I (new_sym, (Call (ret_t, fname, args_list )) )] in
+    let new_str = (List.flatten @@ List.map (fun (_,_,str) -> str )  cmp_es ) @ initial in
+    (ret_t, Id new_sym, new_str)
+  in
+
   begin match exp.elt with
     | CNull t -> (cmp_ty t, Null, [])
     | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
@@ -246,7 +259,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | NewArr _ -> failwith "unimplemented"
     | Id id -> cmp_id id
     | Index _ -> failwith "unimplemented"
-    | Call _ -> failwith "unimplemented"
+    | Call (e,es) -> cmp_call e es
     | Bop (op, e1, e2) -> cmp_binop op e1 e2
     | Uop (op, e) -> cmp_unop op e
   end
@@ -301,7 +314,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     | Assn (x,y) -> failwith "unimplented"
     | Decl (id,e) -> cmp_dec id e
     | Ret x -> cmp_ret x
-    | SCall (x,es) -> failwith "unimplented"
+    | SCall (e,es) -> (c, thd3 @@ (cmp_exp c (no_loc (Call(e, es)))))
     | If _ -> failwith "unimplented"
     | For _ -> failwith "unimplented"
     | While _ -> failwith "unimplented"
