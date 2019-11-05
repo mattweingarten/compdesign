@@ -178,6 +178,7 @@ let thd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'c =  z
      correspond to gids that don't quite have the type you want
 
 *)
+(*TODO rest of expression compiling*)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   let match_binop (op:Ast.binop) (t:Ll.ty) (op1:Ll.operand)(op2:Ll.operand) :Ll.insn =
     begin match op with
@@ -345,6 +346,8 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     (c, [L(end_lbl)] @ [T(Br cond_lbl)] @ body_stream @ [L(start_lbl)] @ br_term @ str @ [L(cond_lbl)] @ [T(Br cond_lbl)])
   in
 
+
+  (*TODO finsih cmp_for*)
   let cmp_for (vdecls :vdecl list) (eoption:exp node option) (stmtoption: stmt node option)(stmts:stmt node list): Ctxt.t * stream  =
       let e  = begin match eoption with | Some x -> x | None -> no_loc @@ CBool true end in
       let stmt = begin match e option with | Some x -> x | None -> [] in
@@ -421,6 +424,7 @@ List.fold_left (fun c -> function
    3. Compile the body of the function using cmp_block
    4. Use cfg_of_stream to produce a LLVMlite cfg from
  *)
+(*TODO second output of fdecl?*)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
 
   let unkown = [] in
