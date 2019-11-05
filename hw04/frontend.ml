@@ -310,12 +310,25 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let new_ctxt = Ctxt.add c id (Ptr t, Id new_symbol_a) in
     (new_ctxt, new_str)
   in
+
+  let cmp_if (e:exp node) (if_stmts:stmt node list) (else_stmts:stmt node list): Ctxt.t * stream =
+    let t,op,str = cmp_exp c e in
+    if t != I1 then failwith "non boolean expression in if statement" ;
+    let if_lbl = gensym "iflbl" in
+    let else_lbl = gensym "elselbl" in
+    let end_lbl = gensym "endlbl" in
+    let if_streams = cmp_block c rt if_stmts in
+    let else_streams = cmp_block c rt else_stmts in
+    let br_term = [T(Cbr(op,if_lbl, else_lbl))] in
+    (c, [L(end_lbl)] @ [T(Br end_lbl)] @ else_streams @ [L(else_lbl)] @ [T(Br end_lbl)] @ if_streams @ [L(if_lbl)] @ br_term @ str)
+  in
+
   begin match stmt.elt with
     | Assn (x,y) -> failwith "unimplented"
     | Decl (id,e) -> cmp_dec id e
     | Ret x -> cmp_ret x
     | SCall (e,es) -> (c, thd3 @@ (cmp_exp c (no_loc (Call(e, es)))))
-    | If _ -> failwith "unimplented"
+    | If (e,if_stmts,else_stmts) -> cmp_if e if_stmts else_stmts
     | For _ -> failwith "unimplented"
     | While _ -> failwith "unimplented"
   end
