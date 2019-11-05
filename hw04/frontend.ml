@@ -299,18 +299,29 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     end
   in
 
-  (*TODO:In declaration also ad index into array *)
   let cmp_dec (id: Ast.id) (e:exp node) :Ctxt.t * stream =
     let t , operand , str   = cmp_exp c e in
-    let new_symbol_a = gensym "a*"  in(*use a for alloca pointers*)
+    let new_symbol_a = gensym "a"  in(*use a for alloca pointers*)
     let new_symbol_s = gensym "s" in (*use s for store*)
     let new_str =  [I(new_symbol_s, Store (t, operand,Id new_symbol_a));
                          I(new_symbol_a, Alloca (Ptr t))
                    ] @ str in
-    let new_ctxt = Ctxt.add c id (Ptr t, Id new_symbol_a) in
+    let new_ctxt = Ctxt.add c id ( t, Id new_symbol_a) in
     (new_ctxt, new_str)
   in
 
+
+  (*TODO assignment using indexing into arrays*)
+  let cmp_ass  (lhs:exp node) (e:exp node): Ctxt.t * stream =
+     begin match lhs.elt with
+      | Id id -> let t,op = Ctxt.lookup id c in
+                 let et, eop, str = cmp_exp c e in
+                 if et != t then failwith "typemismatch in assignment";
+                 (c, [I(gensym "s", Store(et,eop,op))] @ str)
+      | Index _ -> failwith "assigning array indexes not yet implemented"
+      | _ -> failwith "invalid assignment lhs"
+    end
+  in
   let cmp_if (e:exp node) (if_stmts:stmt node list) (else_stmts:stmt node list): Ctxt.t * stream =
     let t,op,str = cmp_exp c e in
     if t != I1 then failwith "non boolean expression in if statement" ;
@@ -323,14 +334,33 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     (c, [L(end_lbl)] @ [T(Br end_lbl)] @ else_streams @ [L(else_lbl)] @ [T(Br end_lbl)] @ if_streams @ [L(if_lbl)] @ br_term @ str)
   in
 
+  let cmp_while (e: exp node) (stmts: stmt node list): Ctxt.t * stream =
+    let t, op, str = cmp_exp c e in
+    if t != I1 then failwith "non boolean expression in if statement" ;
+    let cond_lbl = gensym "condlbl" in
+    let start_lbl = gensym "startlbl" in
+    let end_lbl = gensym "endlbl" in
+    let br_term = [T(Cbr(op,start_lbl, end_lbl))] in
+    let body_stream = cmp_block c rt stmts in
+    (c, [L(end_lbl)] @ [T(Br cond_lbl)] @ body_stream @ [L(start_lbl)] @ br_term @ str @ [L(cond_lbl)] @ [T(Br cond_lbl)])
+  in
+
+  let cmp_for (vdecls :vdecl list) (eoption:exp node option) (stmtoption: stmt node option)(stmts:stmt node list): Ctxt.t * stream  =
+      let e  = begin match eoption with | Some x -> x | None -> no_loc @@ CBool true end in
+      let stmt = begin match e option with | Some x -> x | None -> [] in
+      let declarations = List.flatten @@ List.map (fun (id, exp)  -> snd @@ cmp_dec id exp) vdecls in
+      let while_stream = snd @@ cmp_while e stmts in
+      (c, while_stream @ declarations)
+
+  in
   begin match stmt.elt with
-    | Assn (x,y) -> failwith "unimplented"
+    | Assn (lhs,e) -> cmp_ass lhs e
     | Decl (id,e) -> cmp_dec id e
     | Ret x -> cmp_ret x
     | SCall (e,es) -> (c, thd3 @@ (cmp_exp c (no_loc (Call(e, es)))))
     | If (e,if_stmts,else_stmts) -> cmp_if e if_stmts else_stmts
-    | For _ -> failwith "unimplented"
-    | While _ -> failwith "unimplented"
+    | For (vdecls, eoption,stmtoption,stmts) -> cmp_for vdecls eoption stmtoption stmts
+    | While (e, stmts) -> cmp_while e stmts
   end
 
 
@@ -397,7 +427,7 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
   let f_type = (List.map(fun x -> cmp_ty  @@ fst x) f.elt.args, cmp_ret_ty  f.elt.frtyp) in
   let name = f.elt.fname in
   let params = List.map(fun x -> snd x) f.elt.args in
-  let new_symbols = List.map(fun _ ->  gensym "pa*") f.elt.args in
+  let new_symbols = List.map(fun _ ->  gensym "pa") f.elt.args in
   let allocate_params =  List.flatten @@ List.map(fun ( (t_ast, id) , new_sym)  ->
                          let t = cmp_ty t_ast in
                          [
@@ -405,7 +435,7 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
                           I((new_sym),Alloca t)
                          ]) (List.combine f.elt.args new_symbols) in
   let new_ctxt = List.fold_left ( fun c ((t_ast, id), new_sym) ->
-                                  Ctxt.add c id (cmp_ty t_ast, Id new_sym)
+                                  Ctxt.add c id (Ptr (cmp_ty t_ast), Id new_sym)
                                 )
   c (List.combine f.elt.args new_symbols)
   in
