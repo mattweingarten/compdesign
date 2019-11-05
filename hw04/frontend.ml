@@ -179,23 +179,28 @@ let thd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'c =  z
 
 *)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-
   let match_binop (op:Ast.binop) (t:Ll.ty) (op1:Ll.operand)(op2:Ll.operand) :Ll.insn =
     begin match op with
-      | Add -> Binop (Ll.Add,t,op1, op2)
-      | Sub -> Binop (Ll.Sub,t,op1, op2)
-      | And -> Binop (Ll.And,t,op1, op2)
-      | Or ->  Binop (Ll.Or,t,op1, op2)
-      | Shl -> Binop (Ll.Shl,t,op1, op2)
-      | Shr -> Binop (Ll.Lshr,t,op1, op2)
-      | Sar -> Binop (Ll.Ashr,t,op1, op2)
-      | _ -> failwith "unimplemented binop"
+      | Add ->  Binop  (Add,t,op1, op2)
+      | Sub ->  Binop  (Sub,t,op1, op2)
+      | Mul ->  Binop  (Mul, t, op1,op2)
+      | IAnd -> Binop  (And,t,op1, op2)
+      | IOr ->  Binop  (Or,t,op1, op2)
+      | Shl ->  Binop  (Shl,t,op1, op2)
+      | Shr ->  Binop  (Lshr,t,op1, op2)
+      | Sar ->  Binop  (Ashr,t,op1, op2)
+      | Eq ->   Icmp   (Eq,t,op1,op2)
+      | Neq ->  Icmp   (Ne,t,op1,op2)
+      | Gt ->   Icmp   (Sgt,t,op1,op2)
+      | Gte ->  Icmp   (Sge,t,op1,op2)
+      | Lt ->   Icmp   (Slt,t,op1,op2)
+      | Lte ->  Icmp   (Sle,t,op1,op2)
+      | And ->  Binop  (And, t,op1,op2)
+      | Or ->   Binop  (Or, t, op1,op2)
     end
   in
 
-  let match_unop (op:Ast.unop) :unit =
-    failwith "unimplented unop"
-  in
+
   let cmp_binop (op:binop) (e1:exp node) (e2: exp node) : Ll.ty * Ll.operand * stream =
     let t = cmp_ty @@ thd3 @@ typ_of_binop op in
     let cmp_e1 = cmp_exp c e1 in
@@ -204,12 +209,34 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let stream2 = thd3 cmp_e2 in
     let op1 = snd3 cmp_e1 in
     let op2 = snd3 cmp_e2 in
-    let new_symbol = gensym "x" in
+    let new_symbol = gensym "b" in (*Use b for binop variable*)
     let curr_stream = [I (new_symbol, match_binop op t op1 op2)] in
     (t,Ll.Id new_symbol, stream1 @ stream2 @ curr_stream)
   in
 
+  let match_unop (op:Ast.unop) (t:Ll.ty) (op1:Ll.operand) :Ll.insn =
+    begin match op with
+      | Neg -> Binop (Mul, t, Const (-1L),op1)
+      | Lognot -> Binop (Xor, t, Const 1L,op1)
+      | Bitnot -> Binop (Xor,t, Const (-1L),op1)
+    end
+  in
 
+  let cmp_unop (op:unop) (e1:exp node): Ll.ty * Ll.operand * stream =
+    let t = cmp_ty @@ snd @@ typ_of_unop op in
+    let cmp_e1 = cmp_exp c e1 in
+    let stream1 = thd3 cmp_e1 in
+    let op1 = snd3 cmp_e1 in
+    let new_symbol = gensym "u" in (*Use u for binop variable*)
+    let curr_stream = [I (new_symbol, match_unop op t op1)] in
+    (t,Ll.Id new_symbol, stream1  @ curr_stream)
+  in
+
+  let cmp_id (id:Ast.id) : Ll.ty * Ll.operand * stream =
+    let t, operand = Ctxt.lookup id c in
+    let sym = gensym "l" in (*l for load instructions*)
+    (t, Id sym, [I(sym, Load (t, operand))])
+  in
   begin match exp.elt with
     | CNull t -> (cmp_ty t, Null, [])
     | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
@@ -217,12 +244,11 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | CStr s -> failwith "unimplemented"
     | CArr _ -> failwith "unimplemented"
     | NewArr _ -> failwith "unimplemented"
-    | Id _ -> failwith "unimplemented"
+    | Id id -> cmp_id id
     | Index _ -> failwith "unimplemented"
     | Call _ -> failwith "unimplemented"
     | Bop (op, e1, e2) -> cmp_binop op e1 e2
-
-    | Uop (op, e) -> failwith "unimplemented"
+    | Uop (op, e) -> cmp_unop op e
   end
 
 
@@ -255,12 +281,25 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_ret (op :exp node option):Ctxt.t * stream =
     begin match op with
-      | Some x -> let e = cmp_exp c x in begin match e with | (t,o,s) -> (c, [T (Ret (t, Some o))] @ s) end
+      | Some x -> let t,o,s = cmp_exp c x in (c, [T (Ret (t, Some o))] @ s)
       | None -> (c, [T (Ret (Void, None))])
-    end in
+    end
+  in
+
+  (*TODO:In declaration also ad index into array *)
+  let cmp_dec (id: Ast.id) (e:exp node) :Ctxt.t * stream =
+    let t , operand , str   = cmp_exp c e in
+    let new_symbol_a = gensym "a*"  in(*use a for alloca pointers*)
+    let new_symbol_s = gensym "s" in (*use s for store*)
+    let new_str =  [I(new_symbol_s, Store (t, operand,Id new_symbol_a));
+                    I(new_symbol_a, Alloca (Ptr t))
+                   ] @ str in
+    let new_ctxt = Ctxt.add c id (Ptr t, Id new_symbol_a) in
+    (new_ctxt, new_str)
+  in
   begin match stmt.elt with
     | Assn (x,y) -> failwith "unimplented"
-    | Decl x -> failwith "unimplented"
+    | Decl (id,e) -> cmp_dec id e
     | Ret x -> cmp_ret x
     | SCall (x,es) -> failwith "unimplented"
     | If _ -> failwith "unimplented"
@@ -308,7 +347,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
       | CNull t -> cmp_ty t
       | CBool _ -> I1
       | CInt _ -> I64
-      | CStr _ -> I8
+      | CStr _ -> Ptr I8
       | CArr (_,_) -> failwith "Array unimplemented"
       | _ -> failwith  "Invalid  expression for global declarations."
     end
