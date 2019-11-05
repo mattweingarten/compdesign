@@ -179,23 +179,28 @@ let thd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'c =  z
 
 *)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-
   let match_binop (op:Ast.binop) (t:Ll.ty) (op1:Ll.operand)(op2:Ll.operand) :Ll.insn =
     begin match op with
-     | Add -> Binop (Ll.Add,t,op1, op2)
-     | Sub -> Binop (Ll.Sub,t,op1, op2)
-     | And -> Binop (Ll.And,t,op1, op2)
-     | Or ->  Binop (Ll.Or,t,op1, op2)
-     | Shl -> Binop (Ll.Shl,t,op1, op2)
-     | Shr -> Binop (Ll.Lshr,t,op1, op2)
-     | Sar -> Binop (Ll.Ashr,t,op1, op2)
-     | _ -> failwith "unimplemented binop"
+     | Add ->  Binop  (Add,t,op1, op2)
+     | Sub ->  Binop  (Sub,t,op1, op2)
+     | Mul ->  Binop  (Mul, t, op1,op2)
+     | IAnd -> Binop  (And,t,op1, op2)
+     | IOr ->  Binop  (Or,t,op1, op2)
+     | Shl ->  Binop  (Shl,t,op1, op2)
+     | Shr ->  Binop  (Lshr,t,op1, op2)
+     | Sar ->  Binop  (Ashr,t,op1, op2)
+     | Eq ->   Icmp   (Eq,t,op1,op2)
+     | Neq ->  Icmp   (Ne,t,op1,op2)
+     | Gt ->   Icmp   (Sgt,t,op1,op2)
+     | Gte ->  Icmp   (Sge,t,op1,op2)
+     | Lt ->   Icmp   (Slt,t,op1,op2)
+     | Lte ->  Icmp   (Sle,t,op1,op2)
+     | And ->  Binop  (And, t,op1,op2)
+     | Or ->   Binop  (Or, t, op1,op2)
     end
   in
 
-  let match_unop (op:Ast.unop) :unit =
-    failwith "unimplented unop"
-  in
+
   let cmp_binop (op:binop) (e1:exp node) (e2: exp node) : Ll.ty * Ll.operand * stream =
     let t = cmp_ty @@ thd3 @@ typ_of_binop op in
     let cmp_e1 = cmp_exp c e1 in
@@ -204,11 +209,28 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let stream2 = thd3 cmp_e2 in
     let op1 = snd3 cmp_e1 in
     let op2 = snd3 cmp_e2 in
-    let new_symbol = gensym "x" in
+    let new_symbol = gensym "b" in (*Use b for binop variable*)
     let curr_stream = [I (new_symbol, match_binop op t op1 op2)] in
     (t,Ll.Id new_symbol, stream1 @ stream2 @ curr_stream)
   in
 
+  let match_unop (op:Ast.unop) (t:Ll.ty) (op1:Ll.operand) :Ll.insn =
+    begin match op with
+      | Neg -> Binop (Mul, t, Const (-1L),op1)
+      | Lognot -> Binop (Xor, t, Const 1L,op1)
+      | Bitnot -> Binop (Xor,t, Const (-1L),op1)
+    end
+  in
+
+  let cmp_unop (op:unop) (e1:exp node): Ll.ty * Ll.operand * stream =
+    let t = cmp_ty @@ snd @@ typ_of_unop op in
+    let cmp_e1 = cmp_exp c e1 in
+    let stream1 = thd3 cmp_e1 in
+    let op1 = snd3 cmp_e1 in
+    let new_symbol = gensym "u" in (*Use u for binop variable*)
+    let curr_stream = [I (new_symbol, match_unop op t op1)] in
+    (t,Ll.Id new_symbol, stream1  @ curr_stream)
+  in
 
   begin match exp.elt with
     | CNull t -> (cmp_ty t, Null, [])
@@ -221,8 +243,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | Index _ -> failwith "unimplemented"
     | Call _ -> failwith "unimplemented"
     | Bop (op, e1, e2) -> cmp_binop op e1 e2
-
-    | Uop (op, e) -> failwith "unimplemented"
+    | Uop (op, e) -> cmp_unop op e
   end
 
 
