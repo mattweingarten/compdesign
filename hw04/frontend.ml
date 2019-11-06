@@ -178,6 +178,7 @@ let thd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'c =  z
      correspond to gids that don't quite have the type you want
 
 *)
+(*TODO rest of expression compiling*)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   let match_binop (op:Ast.binop) (t:Ll.ty) (op1:Ll.operand)(op2:Ll.operand) :Ll.insn =
     begin match op with
@@ -211,7 +212,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let op2 = snd3 cmp_e2 in
     let new_symbol = gensym "b" in (*Use b for binop variable*)
     let curr_stream = [I (new_symbol, match_binop op t op1 op2)] in
-    (t,Ll.Id new_symbol, stream1 @ stream2 @ curr_stream)
+    (t,Ll.Id new_symbol, curr_stream @ stream1 @ stream2)
   in
 
   let match_unop (op:Ast.unop) (t:Ll.ty) (op1:Ll.operand) :Ll.insn =
@@ -222,21 +223,34 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     end
   in
 
-  let cmp_unop (op:unop) (e1:exp node): Ll.ty * Ll.operand * stream =
+  let cmp_unop (op:unop) (e1:exp node) :Ll.ty * Ll.operand * stream =
     let t = cmp_ty @@ snd @@ typ_of_unop op in
     let cmp_e1 = cmp_exp c e1 in
     let stream1 = thd3 cmp_e1 in
     let op1 = snd3 cmp_e1 in
     let new_symbol = gensym "u" in (*Use u for binop variable*)
     let curr_stream = [I (new_symbol, match_unop op t op1)] in
-    (t,Ll.Id new_symbol, stream1  @ curr_stream)
+    (t,Ll.Id new_symbol,  curr_stream @ stream1 )
   in
 
   let cmp_id (id:Ast.id) : Ll.ty * Ll.operand * stream =
     let t, operand = Ctxt.lookup id c in
     let sym = gensym "l" in (*l for load instructions*)
-    (t, Id sym, [I(sym, Load (t, operand))])
+    (t, Id sym, [I(sym, Load (Ptr t, operand))])
   in
+
+  let cmp_call (e: exp node) (es:exp node list) :Ll.ty * Ll.operand * stream=
+    let id = begin match e.elt with | Id id-> id | _ -> failwith "invalid call function" end in
+    let cmp_es = List.map(fun e -> cmp_exp c e ) es in
+    let t1,fname = Ctxt.lookup_function id c in
+    let ret_t = begin match t1 with |  Ptr (Fun (_,ret_t)) -> ret_t | _ -> failwith "invalid function lookup"  end in
+    let new_sym = gensym "c" in
+    let args_list =  List.map(fun (t,op,_) -> (t,op)) cmp_es in
+    let initial = [I (new_sym, (Call (ret_t, fname, args_list )) )] in
+    let new_str = (List.flatten @@ List.map (fun (_,_,str) -> str )  cmp_es ) @ initial in
+    (ret_t, Id new_sym, new_str)
+  in
+
   begin match exp.elt with
     | CNull t -> (cmp_ty t, Null, [])
     | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
@@ -246,7 +260,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | NewArr _ -> failwith "unimplemented"
     | Id id -> cmp_id id
     | Index _ -> failwith "unimplemented"
-    | Call _ -> failwith "unimplemented"
+    | Call (e,es) -> cmp_call e es
     | Bop (op, e1, e2) -> cmp_binop op e1 e2
     | Uop (op, e) -> cmp_unop op e
   end
@@ -286,25 +300,70 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     end
   in
 
-  (*TODO:In declaration also ad index into array *)
   let cmp_dec (id: Ast.id) (e:exp node) :Ctxt.t * stream =
     let t , operand , str   = cmp_exp c e in
-    let new_symbol_a = gensym "a*"  in(*use a for alloca pointers*)
+    let new_symbol_a = gensym "a"  in(*use a for alloca pointers*)
     let new_symbol_s = gensym "s" in (*use s for store*)
     let new_str =  [I(new_symbol_s, Store (t, operand,Id new_symbol_a));
                     I(new_symbol_a, Alloca (Ptr t))
                    ] @ str in
-    let new_ctxt = Ctxt.add c id (Ptr t, Id new_symbol_a) in
+    let new_ctxt = Ctxt.add c id ( t, Id new_symbol_a) in
     (new_ctxt, new_str)
   in
+
+
+  (*TODO assignment using indexing into arrays*)
+  let cmp_ass  (lhs:exp node) (e:exp node): Ctxt.t * stream =
+    begin match lhs.elt with
+      | Id id -> let t,op = Ctxt.lookup id c in
+        let et, eop, str = cmp_exp c e in
+        if et != t then failwith "typemismatch in assignment";
+        (c, [I(gensym "s", Store(et,eop,op))] @ str)
+      | Index _ -> failwith "assigning array indexes not yet implemented"
+      | _ -> failwith "invalid assignment lhs"
+    end
+  in
+  let cmp_if (e:exp node) (if_stmts:stmt node list) (else_stmts:stmt node list): Ctxt.t * stream =
+    let t,op,str = cmp_exp c e in
+    if t != I1 then failwith "non boolean expression in if statement" ;
+    let if_lbl = gensym "iflbl" in
+    let else_lbl = gensym "elselbl" in
+    let end_lbl = gensym "endlbl" in
+    let if_streams = cmp_block c rt if_stmts in
+    let else_streams = cmp_block c rt else_stmts in
+    let br_term = [T(Cbr(op,if_lbl, else_lbl))] in
+    (c, [L(end_lbl)] @ [T(Br end_lbl)] @ else_streams @ [L(else_lbl)] @ [T(Br end_lbl)] @ if_streams @ [L(if_lbl)] @ br_term @ str)
+  in
+
+  let cmp_while (e: exp node) (stmts: stmt node list): Ctxt.t * stream =
+    let t, op, str = cmp_exp c e in
+    if t != I1 then failwith "non boolean expression in if statement" ;
+    let cond_lbl = gensym "condlbl" in
+    let start_lbl = gensym "startlbl" in
+    let end_lbl = gensym "endlbl" in
+    let br_term = [T(Cbr(op,start_lbl, end_lbl))] in
+    let body_stream = cmp_block c rt stmts in
+    (c, [L(end_lbl)] @ [T(Br cond_lbl)] @ body_stream @ [L(start_lbl)] @ br_term @ str @ [L(cond_lbl)] @ [T(Br cond_lbl)])
+  in
+
+
+  (*TODO finsih cmp_for*)
+  let cmp_for (vdecls :vdecl list) (eoption:exp node option) (stmtoption: stmt node option)(stmts:stmt node list): Ctxt.t * stream  =
+    let e  = begin match eoption with | Some x -> x | None -> no_loc @@ CBool true end in
+    let stmt = begin match e option with | Some x -> x | None -> [] in
+    let declarations = List.flatten @@ List.map (fun (id, exp)  -> snd @@ cmp_dec id exp) vdecls in
+    let while_stream = snd @@ cmp_while e stmts in
+    (c, while_stream @ declarations)
+
+  in
   begin match stmt.elt with
-    | Assn (x,y) -> failwith "unimplented"
+    | Assn (lhs,e) -> cmp_ass lhs e
     | Decl (id,e) -> cmp_dec id e
     | Ret x -> cmp_ret x
-    | SCall (x,es) -> failwith "unimplented"
-    | If _ -> failwith "unimplented"
-    | For _ -> failwith "unimplented"
-    | While _ -> failwith "unimplented"
+    | SCall (e,es) -> (c, thd3 @@ (cmp_exp c (no_loc (Call(e, es)))))
+    | If (e,if_stmts,else_stmts) -> cmp_if e if_stmts else_stmts
+    | For (vdecls, eoption,stmtoption,stmts) -> cmp_for vdecls eoption stmtoption stmts
+    | While (e, stmts) -> cmp_while e stmts
   end
 
 
@@ -370,12 +429,26 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    3. Compile the body of the function using cmp_block
    4. Use cfg_of_stream to produce a LLVMlite cfg from
 *)
+(*TODO second output of fdecl?*)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
+
   let unkown = [] in
   let f_type = (List.map(fun x -> cmp_ty  @@ fst x) f.elt.args, cmp_ret_ty  f.elt.frtyp) in
   let name = f.elt.fname in
   let params = List.map(fun x -> snd x) f.elt.args in
-  let cfg = fst @@ cfg_of_stream  @@ cmp_block c (snd f_type) f.elt.body in
+  let new_symbols = List.map(fun _ ->  gensym "pa") f.elt.args in
+  let allocate_params =  List.flatten @@ List.map(fun ( (t_ast, id) , new_sym)  ->
+      let t = cmp_ty t_ast in
+      [
+        I((gensym "s",Store(t,Id id,Id new_sym)));
+        I((new_sym),Alloca t)
+      ]) (List.combine f.elt.args new_symbols) in
+  let new_ctxt = List.fold_left ( fun c ((t_ast, id), new_sym) ->
+      Ctxt.add c id (Ptr (cmp_ty t_ast), Id new_sym)
+    )
+      c (List.combine f.elt.args new_symbols)
+  in
+  let cfg = fst @@ cfg_of_stream  @@ (cmp_block new_ctxt (snd f_type) f.elt.body) @ allocate_params in
   {f_ty=f_type;f_param=params;f_cfg=cfg} , unkown
 
 
@@ -402,7 +475,7 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
     | CNull t -> ((cmp_ty t, GNull), [])
     | CBool b -> if b = true then ((I1, GInt 1L), []) else ((I1, GInt 0L), [])
     | CInt i -> ((I64, GInt i), [])
-    | CStr s -> ((I8, GString s), [])
+    | CStr s -> ((Ptr I8, GString s), [])
     | CArr (t, es) -> failwith "unimplemented global array declaration"
     | x -> failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e ^ "for global declarations."
   end
