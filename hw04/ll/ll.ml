@@ -22,7 +22,7 @@ type ty =
 | Struct of ty list
 | Array of int * ty
 | Fun of ty list * ty
-| Namedt of tid
+  | Namedt of tid
 
 (* Function type: argument types and return type *)
 type fty = ty list * ty

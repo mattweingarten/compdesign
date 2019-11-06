@@ -22,7 +22,7 @@ type elt =
   | T of Ll.terminator      (* block terminators *)
   | G of gid * Ll.gdecl     (* hoisted globals (usually strings) *)
   | E of uid * Ll.insn      (* hoisted entry block instructions *)
-
+(*TODO Hoist all alloca functions*)
 type stream = elt list
 let ( >@ ) x y = y @ x
 let ( >:: ) x y = y :: x
@@ -349,11 +349,27 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
 
   (*TODO finsih cmp_for*)
   let cmp_for (vdecls :vdecl list) (eoption:exp node option) (stmtoption: stmt node option)(stmts:stmt node list): Ctxt.t * stream  =
-      let e  = begin match eoption with | Some x -> x | None -> no_loc @@ CBool true end in
-      let stmt = begin match e option with | Some x -> x | None -> [] in
-      let declarations = List.flatten @@ List.map (fun (id, exp)  -> snd @@ cmp_dec id exp) vdecls in
-      let while_stream = snd @@ cmp_while e stmts in
-      (c, while_stream @ declarations)
+    failwith "unimplented"
+      (* let cond_lbl = gensym "condlbl" in
+      let body_lbl = gensym "bodylbl" in
+      let end_lbl = gensym "endlbl" in
+      let cond_t,cond_op,cond_str  =
+      begin match eoption with
+        | Some exp -> cmp_exp c exp
+        | None -> cmp_exp c (no_loc @@ CBool true)
+      end
+      in
+      if cond_t != I1 then failwith "non boolean expression in if statement" ;
+      let cmp_declarations =  List.map (fun (id, exp)  ->  cmp_dec id exp) vdecls in
+      let declarations = List.flatten @@ List.map (fun (c,str) -> str) cmp_declarations in
+      let contexts = List.flatten @@ List.map (fun (c,str) -> c) cmp_declarations in
+      let new_ctxt = List.fold_left (fun (c) -> List.cons ) c contexts in
+      let stmt_str = begin match stmtoption with
+        | Some x -> snd @@  cmp_stmt new_ctxt rt x | None -> [] end in
+      let body_str = List.flatten @@ List.map (fun stmt -> snd @@ cmp_stmt new_ctxt rt stmt) stmts in
+      let cond_br = [T(Cbr(cond_op,body_lbl, end_lbl))] in
+      (c,[L(end_lbl)] @ [T(Br cond_lbl)] @ stmt_str @  body_str @ [L(body_lbl)]
+        @ cond_br @ cond_str @ [L(cond_lbl)] @ [T(Br cond_lbl)] @ declarations) *)
 
   in
   begin match stmt.elt with
