@@ -1,0 +1,8 @@
+
+global x = 1;
+global arr = int[] null;
+global s = "hello!";
+
+int program(int argc, string[] args) {
+  return x;
+}

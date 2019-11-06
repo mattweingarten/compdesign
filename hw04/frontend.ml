@@ -179,6 +179,9 @@ let thd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'c =  z
 
 *)
 (*TODO rest of expression compiling*)
+
+
+
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   let match_binop (op:Ast.binop) (t:Ll.ty) (op1:Ll.operand)(op2:Ll.operand) :Ll.insn =
     begin match op with
@@ -265,7 +268,11 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | Uop (op, e) -> cmp_unop op e
   end
 
-
+let cmp_exp_as  (c:Ctxt.t) (exp:Ast.exp node) (t_final:Ll.ty)  : Ll.operand * stream =
+  let t, op, str = cmp_exp c exp in
+  let new_sym = gensym "gc" in
+  let new_str = [I(new_sym,Bitcast(t,op,t_final))] @ str in
+  (Id new_sym, new_str)
 (* Compile a statement in context c with return typ rt. Return a new context,
    possibly extended with new local bindings, and the instruction stream
    implementing the statement.
@@ -347,7 +354,6 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   in
 
 
-  (*TODO finsih cmp_for*)
   let cmp_for (vdecls :vdecl list) (eoption:exp node option) (stmtoption: stmt node option)(stmts:stmt node list): Ctxt.t * stream  =
       let cond_lbl = gensym "condlbl" in
       let body_lbl = gensym "bodylbl" in
@@ -485,8 +491,16 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
     | CNull t -> ((cmp_ty t, GNull), [])
     | CBool b -> if b = true then ((I1, GInt 1L), []) else ((I1, GInt 0L), [])
     | CInt i -> ((I64, GInt i), [])
-    | CStr s -> ((Ptr I8, GString s), [])
-    | CArr (t, es) -> failwith "unimplemented global array declaration"
+    | CStr s -> let len = 1 + (String.length s) in ((Array(len,I8), GString s), [])
+    | CArr (t, es) -> failwith "array unimplented"
+    (* | CArr (t, es) ->  Printf.printf "|||||||||||||||got here||||||||||||||||";
+                       let len = List.length es in
+                       let ges = List.map(fun exp -> cmp_gexp c exp) es in
+                       let t_inside = fst @@ fst @@ List.hd ges in
+                       if (List.for_all(fun x -> (fst @@ fst @@ x) = t_inside)) ges then
+                        let t_of_arr = Struct [I64; Array(len, t_inside)] in
+                        ((t_of_arr, GArray(List.map(fun (x,y) -> x) ges)), [])
+                      else failwith "multiple different types in array" *)
     | x -> failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e ^ "for global declarations."
   end
 
