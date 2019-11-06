@@ -22,7 +22,7 @@ type elt =
   | T of Ll.terminator      (* block terminators *)
   | G of gid * Ll.gdecl     (* hoisted globals (usually strings) *)
   | E of uid * Ll.insn      (* hoisted entry block instructions *)
-
+(*TODO Hoist all alloca functions*)
 type stream = elt list
 let ( >@ ) x y = y @ x
 let ( >:: ) x y = y :: x
@@ -190,12 +190,12 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       | Shl ->  Binop  (Shl,t,op1, op2)
       | Shr ->  Binop  (Lshr,t,op1, op2)
       | Sar ->  Binop  (Ashr,t,op1, op2)
-      | Eq ->   Icmp   (Eq,t,op1,op2)
-      | Neq ->  Icmp   (Ne,t,op1,op2)
-      | Gt ->   Icmp   (Sgt,t,op1,op2)
-      | Gte ->  Icmp   (Sge,t,op1,op2)
-      | Lt ->   Icmp   (Slt,t,op1,op2)
-      | Lte ->  Icmp   (Sle,t,op1,op2)
+      | Eq ->   Icmp   (Eq,I64,op1,op2)
+      | Neq ->  Icmp   (Ne,I64,op1,op2)
+      | Gt ->   Icmp   (Sgt,I64,op1,op2)
+      | Gte ->  Icmp   (Sge,I64,op1,op2)
+      | Lt ->   Icmp   (Slt,I64,op1,op2)
+      | Lte ->  Icmp   (Sle,I64,op1,op2)
       | And ->  Binop  (And, t,op1,op2)
       | Or ->   Binop  (Or, t, op1,op2)
     end
@@ -305,7 +305,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let new_symbol_a = gensym "a"  in(*use a for alloca pointers*)
     let new_symbol_s = gensym "s" in (*use s for store*)
     let new_str =  [I(new_symbol_s, Store (t, operand,Id new_symbol_a));
-                    I(new_symbol_a, Alloca (Ptr t))
+                    E(new_symbol_a, Alloca  t)
                    ] @ str in
     let new_ctxt = Ctxt.add c id ( t, Id new_symbol_a) in
     (new_ctxt, new_str)
@@ -349,11 +349,26 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
 
   (*TODO finsih cmp_for*)
   let cmp_for (vdecls :vdecl list) (eoption:exp node option) (stmtoption: stmt node option)(stmts:stmt node list): Ctxt.t * stream  =
-    let e  = begin match eoption with | Some x -> x | None -> no_loc @@ CBool true end in
-    let stmt = begin match e option with | Some x -> x | None -> [] in
-    let declarations = List.flatten @@ List.map (fun (id, exp)  -> snd @@ cmp_dec id exp) vdecls in
-    let while_stream = snd @@ cmp_while e stmts in
-    (c, while_stream @ declarations)
+    let cond_lbl = gensym "condlbl" in
+    let body_lbl = gensym "bodylbl" in
+    let end_lbl = gensym "endlbl" in
+
+    let cmp_declarations =  List.map (fun (id, exp)  ->  cmp_stmt c rt (no_loc(Decl (id, exp))) ) vdecls in
+    let declarations = List.flatten @@ List.map (fun (c,str) -> str) cmp_declarations in
+    let new_ctxt = c @ (List.flatten @@ List.map (fun (c,str) ->  c)  cmp_declarations) in
+    let cond_t,cond_op,cond_str  =
+      begin match eoption with
+        | Some exp -> cmp_exp new_ctxt exp
+        | None -> cmp_exp new_ctxt (no_loc @@ CBool true)
+      end
+    in
+    if cond_t != I1 then failwith "non boolean expression in if statement" ;
+    let (stmt_ctxt, stmt_str) = begin match stmtoption with
+      | Some x -> cmp_stmt new_ctxt rt x | None -> (new_ctxt,[]) end in
+    let body_str = List.flatten @@ List.map (fun stmt -> snd @@ cmp_stmt new_ctxt rt stmt) stmts in
+    let cond_br = [T(Cbr(cond_op,body_lbl, end_lbl))] in
+    (c,[L(end_lbl)] @ [T(Br cond_lbl)] @ stmt_str @  body_str @ [L(body_lbl)]
+       @ cond_br @ cond_str @ [L(cond_lbl)] @ [T(Br cond_lbl)] @ declarations)
 
   in
   begin match stmt.elt with
@@ -441,10 +456,10 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
       let t = cmp_ty t_ast in
       [
         I((gensym "s",Store(t,Id id,Id new_sym)));
-        I((new_sym),Alloca t)
+        E((new_sym),Alloca t)
       ]) (List.combine f.elt.args new_symbols) in
   let new_ctxt = List.fold_left ( fun c ((t_ast, id), new_sym) ->
-      Ctxt.add c id (Ptr (cmp_ty t_ast), Id new_sym)
+      Ctxt.add c id ((cmp_ty t_ast), Id new_sym)
     )
       c (List.combine f.elt.args new_symbols)
   in
