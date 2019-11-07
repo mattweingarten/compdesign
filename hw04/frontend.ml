@@ -244,11 +244,18 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
   let cmp_string (s:string) :Ll.ty * Ll.operand * stream =
     let len = (String.length s) + 1 in
-    let a_sym = gensym "a" in
     let s_sym = gensym "string" in
+    let g_sym = gensym "g" in
+    let b_sym = gensym "b" in
     let len = 1 + (String.length s) in
-    let str = [G(s_sym, (Array(len,I8), GString s))] in
-    (Ptr I8,Gid s_sym,str)
+    let str = [
+                I(b_sym, Bitcast((Array(len,I8), Id g_sym, Ptr I8)));
+                I(g_sym, Gep((Ptr (Array(len,I8))),Gid s_sym, [Const 0L]));
+                G(s_sym, (Array(len,I8), GString s))
+
+
+              ] in
+    (Ptr I8,Id b_sym,str)
     (* let str = [
                I(s_sym, Bitcast(Array(len,I8), Id a_sym, Ptr I8));
                E(a_sym, Alloca(Array(len,I8)));
@@ -270,15 +277,16 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
   (*TODO fix*)
   let cmp_index (e1: exp node) (e2: exp node) :Ll.ty * Ll.operand * stream =
-    let t1,op1,str1 = cmp_exp c e1 in
+    failwith "unimplented index"
+    (* let t1,op1,str1 = cmp_exp c e1 in
     let t2, op2, str2 = cmp_exp c e2 in
     let new_s = gensym "gep" in
     let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in
-    (Ptr t1, Id new_s, new_str)
+    (Ptr t1, Id new_s, new_str) *)
   in
   (*TODO cmp_arr exp*)
   let cmp_carr (t:ty) (es: exp node list) :Ll.ty * Ll.operand * stream =
-    failwith "unimplemented"
+    failwith "unimplemented comp_carr"
     (* let cmp_es = List.map(fun x - > cmp_exp c x ) es in *)
   in
   begin match exp.elt with
@@ -338,8 +346,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let t , operand , str   = cmp_exp c e in
     let new_symbol_a = gensym "a"  in(*use a for alloca pointers*)
     let new_symbol_s = gensym "s" in (*use s for store*)
-    let new_str =  [I(new_symbol_s, Store (t, operand,Id new_symbol_a));
-                         E(new_symbol_a, Alloca  t)
+    let new_str =  [
+                     I(new_symbol_s, Store (t, operand,Id new_symbol_a));
+                     E(new_symbol_a, Alloca  t)
                    ] @ str in
     let new_ctxt = Ctxt.add c id ( t, Id new_symbol_a) in
     (new_ctxt, new_str)
