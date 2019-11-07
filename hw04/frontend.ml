@@ -246,11 +246,14 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let len = (String.length s) + 1 in
     let a_sym = gensym "a" in
     let s_sym = gensym "string" in
-    let str = [
-               E(s_sym, Bitcast(Array(len,I8), Id a_sym, Ptr I8));
+    let len = 1 + (String.length s) in
+    let str = [G(s_sym, (Array(len,I8), GString s))] in
+    (Ptr I8,Gid s_sym,str)
+    (* let str = [
+               I(s_sym, Bitcast(Array(len,I8), Id a_sym, Ptr I8));
                E(a_sym, Alloca(Array(len,I8)));
               ] in
-    (Ptr I8, Id s_sym, str)
+    (Ptr I8, Id s_sym, str) *)
   in
   let cmp_call (e: exp node) (es:exp node list) :Ll.ty * Ll.operand * stream=
     let id = begin match e.elt with | Id id-> id | _ -> failwith "invalid call function" end in
@@ -476,8 +479,6 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
 *)
 (*TODO second output of fdecl?*)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
-
-  let unkown = [] in
   let f_type = (List.map(fun x -> cmp_ty  @@ fst x) f.elt.args, cmp_ret_ty  f.elt.frtyp) in
   let name = f.elt.fname in
   let params = List.map(fun x -> snd x) f.elt.args in
@@ -493,8 +494,8 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
     )
       c (List.combine f.elt.args new_symbols)
   in
-  let cfg = fst @@ cfg_of_stream  @@ (cmp_block new_ctxt (snd f_type) f.elt.body) @ allocate_params in
-  {f_ty=f_type;f_param=params;f_cfg=cfg} , unkown
+  let cfg = cfg_of_stream  @@ (cmp_block new_ctxt (snd f_type) f.elt.body) @ allocate_params in
+  {f_ty=f_type;f_param=params;f_cfg=(fst cfg)} , snd cfg
 
 
 (* AST : type fdecl = { frtyp : ret_ty; fname : id; args : (ty * id) list; body : block } *)
