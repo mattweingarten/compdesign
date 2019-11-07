@@ -282,12 +282,23 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   (*TODO cmp_arr exp*)
   let cmp_carr (t:ty) (es: exp node list) :Ll.ty * Ll.operand * stream =
     let alloc = oat_alloc_array t (Const (Int64.of_int @@ List.length es)) in
-    let m = fun e ->
+    let rec traverse_es els i =
+      begin match els with
+      | [] -> []
+      | e::els' ->
       let t, op, str = cmp_exp c e in
-      I(gensym "s", Store (t, op, Id (gensym "a")))::str
+      let arr_id =
+        begin match (List.hd (thd3 alloc)) with
+          | I(i, _) -> Printf.printf "%s\n" i; i
+          | _ -> failwith "wrong"
+        end in
+      let sym_a = gensym "a" in
+      str >@ lift [sym_a, Gep(fst3 alloc, Id arr_id, [Const (Int64.of_int i)]);
+        (gensym "s", Store (t, op, Id (sym_a)))] >@ traverse_es els' (i+1)
+      end
     in
-    let str = List.map m es in
-    (fst3 alloc, snd3 alloc, List.flatten str @ thd3 alloc)
+    let str = traverse_es es 0 in
+    (fst3 alloc, snd3 alloc, thd3 alloc >@ str)
 
 
     (* let cmp_es = List.map(fun x - > cmp_exp c x ) es in *)
