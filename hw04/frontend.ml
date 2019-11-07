@@ -179,6 +179,9 @@ let thd3 ((x: 'a), (y: 'b) ,(z: 'c)): 'c =  z
 
 *)
 (*TODO rest of expression compiling*)
+
+
+
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   let match_binop (op:Ast.binop) (t:Ll.ty) (op1:Ll.operand)(op2:Ll.operand) :Ll.insn =
     begin match op with
@@ -239,6 +242,16 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     (t, Id sym, [I(sym, Load (Ptr t, operand))])
   in
 
+  let cmp_string (s:string) :Ll.ty * Ll.operand * stream =
+    let len = (String.length s) + 1 in
+    let a_sym = gensym "a" in
+    let s_sym = gensym "string" in
+    let str = [
+               E(s_sym, Bitcast(Array(len,I8), Id a_sym, Ptr I8));
+               E(a_sym, Alloca(Array(len,I8)));
+              ] in
+    (Ptr I8, Id s_sym, str)
+  in
   let cmp_call (e: exp node) (es:exp node list) :Ll.ty * Ll.operand * stream=
     let id = begin match e.elt with | Id id-> id | _ -> failwith "invalid call function" end in
     let cmp_es = List.map(fun e -> cmp_exp c e ) es in
@@ -251,21 +264,39 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     (ret_t, Id new_sym, new_str)
   in
 
+
+  (*TODO fix*)
+  let cmp_index (e1: exp node) (e2: exp node) :Ll.ty * Ll.operand * stream =
+    let t1,op1,str1 = cmp_exp c e1 in
+    let t2, op2, str2 = cmp_exp c e2 in
+    let new_s = gensym "gep" in
+    let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in
+    (Ptr t1, Id new_s, new_str)
+  in
+  (*TODO cmp_arr exp*)
+  let cmp_carr (t:ty) (es: exp node list) :Ll.ty * Ll.operand * stream =
+    failwith "unimplemented"
+    (* let cmp_es = List.map(fun x - > cmp_exp c x ) es in *)
+  in
   begin match exp.elt with
     | CNull t -> (cmp_ty t, Null, [])
     | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
     | CInt i -> (I64, Const i, [])
-    | CStr s -> failwith "unimplemented"
-    | CArr _ -> failwith "unimplemented"
-    | NewArr _ -> failwith "unimplemented"
+    | CStr s -> cmp_string s
+    | CArr (t,es) -> cmp_carr t es
+    | NewArr _ -> failwith "unimplemented" (*TODO new arr*)
     | Id id -> cmp_id id
-    | Index _ -> failwith "unimplemented"
+    | Index (e1,e2) -> cmp_index e1 e2
     | Call (e,es) -> cmp_call e es
     | Bop (op, e1, e2) -> cmp_binop op e1 e2
     | Uop (op, e) -> cmp_unop op e
   end
 
-
+let cmp_exp_as  (c:Ctxt.t) (exp:Ast.exp node) (t_final:Ll.ty)  : Ll.operand * stream =
+  let t, op, str = cmp_exp c exp in
+  let new_sym = gensym "gc" in
+  let new_str = [I(new_sym,Bitcast(t,op,t_final))] @ str in
+  (Id new_sym, new_str)
 (* Compile a statement in context c with return typ rt. Return a new context,
    possibly extended with new local bindings, and the instruction stream
    implementing the statement.
@@ -347,7 +378,6 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   in
 
 
-  (*TODO finsih cmp_for*)
   let cmp_for (vdecls :vdecl list) (eoption:exp node option) (stmtoption: stmt node option)(stmts:stmt node list): Ctxt.t * stream  =
     let cond_lbl = gensym "condlbl" in
     let body_lbl = gensym "bodylbl" in
@@ -484,14 +514,22 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
      be an array of pointers to arrays emitted as additional global declarations
 *)
 
-(*TODO: Compile global array decl*)
+(*TODO: Compile global array decl and fix string*)
 let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   begin match e.elt with
     | CNull t -> ((cmp_ty t, GNull), [])
     | CBool b -> if b = true then ((I1, GInt 1L), []) else ((I1, GInt 0L), [])
     | CInt i -> ((I64, GInt i), [])
-    | CStr s -> ((Ptr I8, GString s), [])
-    | CArr (t, es) -> failwith "unimplemented global array declaration"
+    | CStr s -> let len = 1 + (String.length s) in ((Array(len,I8), GString s), [])
+    | CArr (t, es) -> failwith "array unimplented in gexp"
+    (* | CArr (t, es) ->  Printf.printf "|||||||||||||||got here||||||||||||||||";
+                       let len = List.length es in
+                       let ges = List.map(fun exp -> cmp_gexp c exp) es in
+                       let t_inside = fst @@ fst @@ List.hd ges in
+                       if (List.for_all(fun x -> (fst @@ fst @@ x) = t_inside)) ges then
+                        let t_of_arr = Struct [I64; Array(len, t_inside)] in
+                        ((t_of_arr, GArray(List.map(fun (x,y) -> x) ges)), [])
+                      else failwith "multiple different types in array" *)
     | x -> failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e ^ "for global declarations."
   end
 

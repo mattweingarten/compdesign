@@ -1,0 +1,11 @@
+
+global x = 1;
+global y = x;
+global arr = int[] null;
+
+int program(int argc, string[] args) {
+  var s = "hello";
+
+  var arr = new int[] {1,2,3};
+  return x;
+}
