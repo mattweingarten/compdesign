@@ -281,7 +281,15 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   in
   (*TODO cmp_arr exp*)
   let cmp_carr (t:ty) (es: exp node list) :Ll.ty * Ll.operand * stream =
-    failwith "unimplemented comp_carr"
+    let alloc = oat_alloc_array t (Const (Int64.of_int @@ List.length es)) in
+    let m = fun e ->
+      let t, op, str = cmp_exp c e in
+      I(gensym "s", Store (t, op, Id (gensym "a")))::str
+    in
+    let str = List.map m es in
+    (fst3 alloc, snd3 alloc, List.flatten str @ thd3 alloc)
+
+
     (* let cmp_es = List.map(fun x - > cmp_exp c x ) es in *)
   in
   begin match exp.elt with
