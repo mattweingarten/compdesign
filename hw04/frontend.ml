@@ -452,7 +452,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
       | CBool _ -> I1
       | CInt _ -> I64
       | CStr _ -> Ptr I8
-      | CArr (_,_) -> failwith "Array unimplemented"
+      | CArr (t,es) -> Ptr (Struct [I64;Array (List.length es, cmp_ty t)])
       | _ -> failwith  "Invalid  expression for global declarations."
     end
   in
