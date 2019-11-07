@@ -1,5 +1,6 @@
 global s1 = "hello1";
-global arr = int[]{1, 2, 3, 4};
+global arr = int[]{int[]{1,2,3},int[]{1,2,3}, int[]{1,2,3}, int[]{1,2,3}};
+global arr2 = int[]{1,2,3,4};
 int main(int argc, string[] args) {
   var s = "hello";
   return s;

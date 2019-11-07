@@ -526,7 +526,7 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
     | CArr (t, es) -> let len = List.length es in
                       let arr_type = Struct[I64;Array(len,cmp_ty t)] in
                       let g_es = List.map(fun e -> fst @@ cmp_gexp c  e) es in
-                      ((arr_type , GArray(g_es)),[])
+                      ((arr_type , GStruct([(I64,GInt (Int64.of_int len));(Array(len,cmp_ty t), GArray(g_es))])),[])
     | x -> failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e ^ "for global declarations."
   end
 
