@@ -256,11 +256,6 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
               ] in
     (Ptr I8,Id b_sym,str)
-    (* let str = [
-               I(s_sym, Bitcast(Array(len,I8), Id a_sym, Ptr I8));
-               E(a_sym, Alloca(Array(len,I8)));
-              ] in
-    (Ptr I8, Id s_sym, str) *)
   in
   let cmp_call (e: exp node) (es:exp node list) :Ll.ty * Ll.operand * stream=
     let id = begin match e.elt with | Id id-> id | _ -> failwith "invalid call function" end in
@@ -453,13 +448,15 @@ let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    in well-formed programs. (The constructors starting with C).
 *)
 let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
- let get_type_from_exp (e:exp) : Ll.ty =
+ let rec get_type_from_exp (e:exp) : Ll.ty =
   begin match e with
    | CNull t -> cmp_ty t
    | CBool _ -> I1
    | CInt _ -> I64
    | CStr _ -> Ptr I8
-   | CArr (_,_) -> failwith "Array unimplemented"
+   | CArr (t,es) -> let len = List.length es in
+                    let t_inside = get_type_from_exp (List.hd es).elt in
+                    Struct [I64; Array(len, t_inside)]
    | _ -> failwith  "Invalid  expression for global declarations."
   end
  in
@@ -526,15 +523,10 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
     | CBool b -> if b = true then ((I1, GInt 1L), []) else ((I1, GInt 0L), [])
     | CInt i -> ((I64, GInt i), [])
     | CStr s -> let len = 1 + (String.length s) in ((Array(len,I8), GString s), [])
-    | CArr (t, es) -> failwith "array unimplented in gexp"
-    (* | CArr (t, es) ->  Printf.printf "|||||||||||||||got here||||||||||||||||";
-                       let len = List.length es in
-                       let ges = List.map(fun exp -> cmp_gexp c exp) es in
-                       let t_inside = fst @@ fst @@ List.hd ges in
-                       if (List.for_all(fun x -> (fst @@ fst @@ x) = t_inside)) ges then
-                        let t_of_arr = Struct [I64; Array(len, t_inside)] in
-                        ((t_of_arr, GArray(List.map(fun (x,y) -> x) ges)), [])
-                      else failwith "multiple different types in array" *)
+    | CArr (t, es) -> let len = List.length es in
+                      let arr_type = Struct[I64;Array(len,cmp_ty t)] in
+                      let g_es = List.map(fun e -> fst @@ cmp_gexp c  e) es in
+                      ((arr_type , GArray(g_es)),[])
     | x -> failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e ^ "for global declarations."
   end
 
