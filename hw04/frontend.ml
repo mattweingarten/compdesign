@@ -240,6 +240,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let t, operand = Ctxt.lookup id c in
     let sym = gensym "l" in (*l for load instructions*)
     (t, Id sym, [I(sym, Load (Ptr t, operand))])
+
   in
 
   let cmp_string (s:string) :Ll.ty * Ll.operand * stream =
@@ -272,36 +273,63 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
   (*TODO fix*)
   let cmp_index (e1: exp node) (e2: exp node) :Ll.ty * Ll.operand * stream =
-    failwith "unimplented index"
-    (* let t1,op1,str1 = cmp_exp c e1 in
-       let t2, op2, str2 = cmp_exp c e2 in
-       let new_s = gensym "gep" in
-       let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in
-       (Ptr t1, Id new_s, new_str) *)
+    let t1, op1,str1 = cmp_exp c e1 in
+    let t2, op2, str2 = cmp_exp c e2 in
+    let new_s = gensym "gep" in
+    let new_r = gensym "l" in
+    let t_result = begin match t1 with
+      | Struct [i;Array(len,t3)] -> Ptr t3
+      | Ptr t3 ->  Ptr t3
+      | _ -> failwith "trying to index not indexable expression"
+    end
+    in
+    let t_result_without_pointer = begin match t_result with | Ptr x -> x | _ -> failwith "trying to index not indexable expression" end in
+    let new_str = begin match t1 with
+      | Struct [i;Array(len,t3)] ->
+        let struct_pointer =Ptr ( Struct [i;Array(len,t3)]) in
+        [
+          I(new_r, Load (t_result, Id new_s));
+          I(new_s,Gep(struct_pointer, op1,[Const 0L;Const 1L;op2]));
+        ]
+      | Ptr t3 ->  [
+          I(new_r, Load (t_result, Id new_s));
+          I(new_s,Gep(Ptr t3, op1,[Const 0L;op2]))
+        ]
+      | _ -> failwith "trying to index not indexable expression"
+    end
+    in
+    (t_result_without_pointer, Id new_r, new_str @ str2 @ str1)
+
+  (* if List.length > 2 then failwith "trying to index not indexable expression"; *)
+  (* if (t2 != Const _) failwith "non constand in indexing" in *)
+  (* let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in *)
+
+  (* let t1, op1,str1 = cmp_exp c e1 in
+     let t2, op2, str2 = cmp_exp c e2 in
+     let new_s = gensym "gep" in
+     let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in
+     (Ptr t1, Id new_s, new_str) *)
   in
-  (*TODO cmp_arr exp*)
+
   let cmp_carr (t:ty) (es: exp node list) :Ll.ty * Ll.operand * stream =
     let alloc = oat_alloc_array t (Const (Int64.of_int @@ List.length es)) in
     let rec traverse_es els i =
       begin match els with
-      | [] -> []
-      | e::els' ->
-      let t, op, str = cmp_exp c e in
-      let arr_id =
-        begin match (List.hd (thd3 alloc)) with
-          | I(i, _) -> Printf.printf "%s\n" i; i
-          | _ -> failwith "wrong"
-        end in
-      let sym_a = gensym "a" in
-      str >@ lift [sym_a, Gep(fst3 alloc, Id arr_id, [Const (Int64.of_int i)]);
-        (gensym "s", Store (t, op, Id (sym_a)))] >@ traverse_es els' (i+1)
+        | [] -> []
+        | e::els' ->
+          let t, op, str = cmp_exp c e in
+          let arr_id =
+            begin match (List.hd (thd3 alloc)) with
+              | I(i, _) -> Printf.printf "%s\n" i; i
+              | _ -> failwith "wrong"
+            end in
+          let sym_a = gensym "a" in
+          str >@ lift [sym_a, Gep(fst3 alloc, Id arr_id, [Const (Int64.of_int i)]);
+                       (gensym "s", Store (t, op, Id (sym_a)))] >@ traverse_es els' (i+1)
       end
     in
     let str = traverse_es es 0 in
     (fst3 alloc, snd3 alloc, thd3 alloc >@ str)
-
-
-    (* let cmp_es = List.map(fun x - > cmp_exp c x ) es in *)
   in
   begin match exp.elt with
     | CNull t -> (cmp_ty t, Null, [])
@@ -352,6 +380,10 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_ret (op :exp node option):Ctxt.t * stream =
     begin match op with
       | Some x -> let t,o,s = cmp_exp c x in (c, [T (Ret (t, Some o))] @ s)
+      (* begin match t with
+         | I1 | I64 | Ptr _ | Fun _ ->  (c, [T (Ret (t, Some o))] @ s)
+         | _ -> failwith "invalid return type"
+         end *)
       | None -> (c, [T (Ret (Void, None))])
     end
   in
@@ -521,11 +553,6 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
   in
   let cfg = cfg_of_stream  @@ (cmp_block new_ctxt (snd f_type) f.elt.body) @ allocate_params in
   {f_ty=f_type;f_param=params;f_cfg=(fst cfg)} , snd cfg
-
-
-(* AST : type fdecl = { frtyp : ret_ty; fname : id; args : (ty * id) list; body : block } *)
-(* LL: type fdecl = { f_ty : fty; f_param : uid list; f_cfg : cfg } *)
-(*LL: type cfg = block * (lbl * block) list *)
 
 
 (* Compile a global initializer, returning the resulting LLVMlite global
