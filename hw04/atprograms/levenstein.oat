@@ -1,0 +1,30 @@
+int min3 (int i1, int i2, int i3) {
+    var res = 0;
+    if (i1 < i2) { res = i1; }
+    else { res = i2; }
+    if (i3 < res) {res = i3; }
+    return res;
+}
+
+int levenstein (string[] s1, int l1, string[] s2, int l2) {
+    var dp = new int[l1+1][l2+1];
+    var res = 0;
+    if (l1 == 0) { res = l2; }
+    if (l2 == 0) { res = l1; }
+
+    for (var i = 0; i <= l1; i = i + 1;) {
+        for (var j = 0; j <= l2; j = j + 1;) {
+            if (str[i] == str[j]) { dp[i][j] = dp[i-1][j-1]; }
+            else { dp[i][j] = 1 + min3(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]); }
+        }
+    }
+    res = dp[l1][l2];
+    return res;
+}
+
+int program (int argc, string[] argv) {
+    var str1 = new string[]{"t", "e", "s", "t"};
+    var str2 = new string[]{"t", "e", "x", "t"};
+    var dist = levenstein(str1, 4, str2, 4);
+    return dist;
+}
