@@ -296,7 +296,6 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let t1, op1, str1 = cmp_exp c e1 in
     let t2, op2, str2 = cmp_exp c e2 in
     let new_s = gensym "gep" in
-    let new_r = gensym "l" in
     let arr_t =
       fst
       @@ Ctxt.lookup
@@ -321,10 +320,10 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     (* let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in *)
 
     (* let t1, op1,str1 = cmp_exp c e1 in
-       let t2, op2, str2 = cmp_exp c e2 in
-       let new_s = gensym "gep" in
-       let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in
-       (Ptr t1, Id new_s, new_str) *)
+     let t2, op2, str2 = cmp_exp c e2 in
+     let new_s = gensym "gep" in
+     let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in
+     (Ptr t1, Id new_s, new_str) *)
   in
 
   let cmp_carr (t : ty) (es : exp node list) : Ll.ty * Ll.operand * stream =
@@ -632,23 +631,32 @@ let rec cmp_gexp c (e : Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   | CStr s ->
       let len = 1 + String.length s in
       ((Array (len, I8), GString s), [])
-  | CArr (t, es) ->
+  | CArr (t, es) -> (
       let len = List.length es in
-      let arr_type = Struct [ I64; Array (0, cmp_ty t) ] in
+      let arr_type = Struct [ I64; Array (len, cmp_ty t) ] in
       let g_es = List.map (fun e -> fst @@ cmp_gexp c e) es in
-      let add_gdecls =
-        match cmp_ty t with
-        | Ptr (Struct _) ->
-            Printf.printf "%s\n" (string_of_ty (cmp_ty t));
-            List.map (fun e -> (gensym "nested", e)) g_es
-        | _ -> []
-      in
-      ( ( arr_type,
-          GStruct
-            [
-              (I64, GInt (Int64.of_int len)); (Array (0, cmp_ty t), GArray g_es);
-            ] ),
-        add_gdecls )
+      match cmp_ty t with
+      | Ptr (Struct _) ->
+          let add_decls = List.map (fun e -> (gensym "nested", e)) g_es in
+          ( ( arr_type,
+              GStruct
+                [
+                  (I64, GInt (Int64.of_int len));
+                  ( Array (len, cmp_ty t),
+                    GArray
+                      (List.map
+                         (fun d -> (fst (snd d), GGid (fst d)))
+                         add_decls) );
+                ] ),
+            add_decls )
+      | _ ->
+          ( ( arr_type,
+              GStruct
+                [
+                  (I64, GInt (Int64.of_int len));
+                  (Array (len, cmp_ty t), GArray g_es);
+                ] ),
+            [] ) )
   | x ->
       failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e
       ^ "for global declarations."
