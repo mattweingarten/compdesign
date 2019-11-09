@@ -263,7 +263,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let len = 1 + String.length s in
     let str =
       [
-        I (b_sym, Bitcast (Array (len, I8), Id g_sym, Ptr I8));
+        I (b_sym, Bitcast (Ptr (Array (len, I8)), Id g_sym, Ptr I8));
         I (g_sym, Gep (Ptr (Array (len, I8)), Gid s_sym, [ Const 0L ]));
         G (s_sym, (Array (len, I8), GString s));
       ]
@@ -296,6 +296,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let t1, op1, str1 = cmp_exp c e1 in
     let t2, op2, str2 = cmp_exp c e2 in
     let new_s = gensym "gep" in
+    let new_l = gensym "load" in
     let arr_t =
       fst
       @@ Ctxt.lookup
@@ -307,13 +308,13 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
       | Ptr (Struct [ _; Array (_, t) ]) -> t
       | _ -> failwith "not an array"
     in
-    ( Ptr final_t,
-      Id new_s,
+    ( final_t,
+      Id new_l,
       str1 >@ str2
       >@ lift
            [
-             (new_s, Gep (t1, op1, [ Const 1L; op2 ]));
-             (* (new_r, Load (final_t, Id new_s)); *)
+             (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
+             (new_l, Load (Ptr final_t, Id new_s));
            ] )
     (* if List.length > 2 then failwith "trying to index not indexable expression"; *)
     (* if (t2 != Const _) failwith "non constand in indexing" in *)
@@ -338,18 +339,23 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
             | I (i, _) -> i
             | _ -> failwith "wrong"
           in
-          let sym_a = gensym "a" in
+          let sym_elem = gensym "elem" in
           str
           >@ lift
                [
-                 (sym_a, Gep (fst3 alloc, Id arr_id, [ Const (Int64.of_int i) ]));
-                 (gensym "s", Store (t, op, Id sym_a));
+                 ( sym_elem,
+                   Gep
+                     ( fst3 alloc,
+                       Id arr_id,
+                       [ Const 0L; Const 1L; Const (Int64.of_int i) ] ) );
+                 (gensym "s", Store (t, op, Id sym_elem));
                ]
           >@ traverse_es els' (i + 1)
     in
     let str = traverse_es es 0 in
     (fst3 alloc, snd3 alloc, thd3 alloc >@ str)
   in
+
   match exp.elt with
   | CNull t -> (cmp_ty t, Null, [])
   | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
@@ -427,15 +433,42 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     (new_ctxt, new_str)
   in
 
+  let cmp_index (e1 : exp node) (e2 : exp node) (e : exp node) : Ctxt.t * stream
+      =
+    let t1, op1, str1 = cmp_exp c e1 in
+    let t2, op2, str2 = cmp_exp c e2 in
+    let t3, op3, str3 = cmp_exp c e in
+    let new_s = gensym "gep" in
+    let new_r = gensym "store" in
+    let arr_t =
+      fst
+      @@ Ctxt.lookup
+           ((function Id id -> id | _ -> failwith "not array id") e1.elt)
+           c
+    in
+    let final_t =
+      match arr_t with
+      | Ptr (Struct [ _; Array (_, t) ]) -> t
+      | _ -> failwith "not an array"
+    in
+    ( c,
+      str1 >@ str2 >@ str3
+      >@ lift
+           [
+             (new_s, Gep (t1, op1, [ Const 1L; op2 ]));
+             (new_r, Store (final_t, op3, Id new_s));
+           ] )
+  in
+
   (*TODO assignment using indexing into arrays*)
   let cmp_ass (lhs : exp node) (e : exp node) : Ctxt.t * stream =
     match lhs.elt with
     | Id id ->
         let t, op = Ctxt.lookup id c in
         let et, eop, str = cmp_exp c e in
-        if et != t then failwith "typemismatch in assignment";
+        (* if et != t then failwith "typemismatch in assignment"; *)
         (c, [ I (gensym "s", Store (et, eop, op)) ] @ str)
-    | Index _ -> failwith "assigning array indexes not yet implemented"
+    | Index (l1, l2) -> failwith "index assignment not implemented"
     | _ -> failwith "invalid assignment lhs"
   in
   let cmp_if (e : exp node) (if_stmts : stmt node list)
@@ -579,7 +612,6 @@ let cmp_global_ctxt (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
    3. Compile the body of the function using cmp_block
    4. Use cfg_of_stream to produce a LLVMlite cfg from
 *)
-(*TODO second output of fdecl?*)
 let cmp_fdecl (c : Ctxt.t) (f : Ast.fdecl node) :
     Ll.fdecl * (Ll.gid * Ll.gdecl) list =
   let f_type =
