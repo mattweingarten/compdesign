@@ -253,17 +253,13 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let t, operand = Ctxt.lookup id c in
     let sym = gensym "l" in
     let sym_b = gensym "bc" in
-    let str =
-      match t with
-      | Ptr (Array (_, I8)) ->
-          lift
-            [
-              (sym_b, Bitcast (t, operand, Ptr I8));
-              (sym, Load (Ptr I8, Id sym_b));
-            ]
-      | _ -> [ I (sym, Load (Ptr t, operand)) ]
-    in
-    (t, Id sym, str)
+    match (t, operand) with
+    | Array (_, I8), Gid _ ->
+        (Ptr I8, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, Ptr I8)) ])
+    | Struct [ _; Array (_, t') ], Gid _ ->
+        let ty = Ptr (Struct [ I64; Array (0, t') ]) in
+        (ty, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, ty)) ])
+    | _ -> (t, Id sym, [ I (sym, Load (Ptr t, operand)) ])
   in
 
   let cmp_string (s : string) : Ll.ty * Ll.operand * stream =
@@ -309,7 +305,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let final_t =
       match t1 with
       | Ptr (Struct [ _; Array (_, t) ]) -> t
-      | _ -> failwith @@ "not array " ^ string_of_ty t1
+      | _ -> failwith @@ "not array " ^ string_of_ty t1 ^ string_of_operand op1
     in
     ( final_t,
       Id new_l,
@@ -437,7 +433,7 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     let final_t =
       match t1 with
       | Ptr (Struct [ _; Array (_, t) ]) -> t
-      | _ -> failwith @@ "not array " ^ string_of_ty t1
+      | _ -> failwith @@ "not array " ^ string_of_ty t1 ^ string_of_operand op1
     in
     let new_c = Ctxt.add c new_s (final_t, Id new_s) in
     ( new_c,
@@ -565,12 +561,6 @@ let cmp_function_ctxt (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
    Only a small subset of OAT expressions can be used as global initializers
    in well-formed programs. (The constructors starting with C).
 *)
-let cmp_ginit_ty = function
-  | CNull _ -> Void
-  | CBool _ -> I1
-  | CInt _ -> I64
-  | CStr _ -> Ptr I8
-  | _ -> failwith "unsupported global init expression"
 
 let cmp_global_ctxt (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
   let rec get_type_from_exp (e : exp) : Ll.ty =
@@ -578,7 +568,7 @@ let cmp_global_ctxt (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
     | CNull t -> cmp_ty t
     | CBool _ -> I1
     | CInt _ -> I64
-    | CStr _ -> Ptr I8
+    | CStr s -> Array (1 + String.length s, I8)
     | CArr (t, es) ->
         let len = List.length es in
         let t_inside = get_type_from_exp (List.hd es).elt in
