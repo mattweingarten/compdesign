@@ -263,12 +263,12 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let len = 1 + String.length s in
     let str =
       [
-        I (b_sym, Bitcast (Ptr (Array (len, I8)), Id g_sym, Ptr I8));
-        I (g_sym, Gep (Ptr (Array (len, I8)), Gid s_sym, [ Const 0L ]));
+        (* I (b_sym, Bitcast (Ptr (Array (len, I8)), Id g_sym, Ptr I8)); *)
+        I (g_sym, Gep (Ptr (Array (len, I8)), Gid s_sym, [ Const 0L; Const 0L ]));
         G (s_sym, (Array (len, I8), GString s));
       ]
     in
-    (Ptr I8, Id b_sym, str)
+    (Ptr I8, Id g_sym, str)
   in
   let cmp_call (e : exp node) (es : exp node list) : Ll.ty * Ll.operand * stream
       =
@@ -297,24 +297,17 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let t2, op2, str2 = cmp_exp c e2 in
     let new_s = gensym "gep" in
     let new_l = gensym "load" in
-    let arr_t =
-      fst
-      @@ Ctxt.lookup
-           ((function Id id -> id | _ -> failwith "not array id") e1.elt)
-           c
-    in
-    let final_t =
-      match arr_t with
+    let final_t = function
       | Ptr (Struct [ _; Array (_, t) ]) -> t
-      | _ -> failwith "not an array"
+      | _ -> failwith @@ "not array " ^ string_of_ty t1
     in
-    ( final_t,
+    ( final_t t1,
       Id new_l,
       str1 >@ str2
       >@ lift
            [
              (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
-             (new_l, Load (Ptr final_t, Id new_s));
+             (new_l, Load (Ptr (final_t t1), Id new_s));
            ] )
     (* if List.length > 2 then failwith "trying to index not indexable expression"; *)
     (* if (t2 != Const _) failwith "non constand in indexing" in *)
