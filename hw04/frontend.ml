@@ -291,33 +291,24 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     (ret_t, Id new_sym, new_str)
   in
 
-  (*TODO fix*)
   let cmp_index (e1 : exp node) (e2 : exp node) : Ll.ty * Ll.operand * stream =
     let t1, op1, str1 = cmp_exp c e1 in
     let t2, op2, str2 = cmp_exp c e2 in
     let new_s = gensym "gep" in
     let new_l = gensym "load" in
-    let final_t = function
+    let final_t =
+      match t1 with
       | Ptr (Struct [ _; Array (_, t) ]) -> t
       | _ -> failwith @@ "not array " ^ string_of_ty t1
     in
-    ( final_t t1,
+    ( final_t,
       Id new_l,
       str1 >@ str2
       >@ lift
            [
              (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
-             (new_l, Load (Ptr (final_t t1), Id new_s));
+             (new_l, Load (Ptr final_t, Id new_s));
            ] )
-    (* if List.length > 2 then failwith "trying to index not indexable expression"; *)
-    (* if (t2 != Const _) failwith "non constand in indexing" in *)
-    (* let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in *)
-
-    (* let t1, op1,str1 = cmp_exp c e1 in
-     let t2, op2, str2 = cmp_exp c e2 in
-     let new_s = gensym "gep" in
-     let new_str = [I(new_s, Gep(t1,op1,[op2]))] @ str2 @ str1 in
-     (Ptr t1, Id new_s, new_str) *)
   in
 
   let cmp_carr (t : ty) (es : exp node list) : Ll.ty * Ll.operand * stream =
@@ -430,26 +421,21 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
       =
     let t1, op1, str1 = cmp_exp c e1 in
     let t2, op2, str2 = cmp_exp c e2 in
-    let t3, op3, str3 = cmp_exp c e in
+    let t, op, str = cmp_exp c e in
     let new_s = gensym "gep" in
-    let new_r = gensym "store" in
-    let arr_t =
-      fst
-      @@ Ctxt.lookup
-           ((function Id id -> id | _ -> failwith "not array id") e1.elt)
-           c
-    in
+    let new_l = gensym "load" in
     let final_t =
-      match arr_t with
+      match t1 with
       | Ptr (Struct [ _; Array (_, t) ]) -> t
-      | _ -> failwith "not an array"
+      | _ -> failwith @@ "not array " ^ string_of_ty t1
     in
-    ( c,
-      str1 >@ str2 >@ str3
+    let new_c = Ctxt.add c new_s (final_t, Id new_s) in
+    ( new_c,
+      str1 >@ str2 >@ str
       >@ lift
            [
-             (new_s, Gep (t1, op1, [ Const 1L; op2 ]));
-             (new_r, Store (final_t, op3, Id new_s));
+             (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
+             (new_l, Store (final_t, op, Id new_s));
            ] )
   in
 
@@ -461,7 +447,7 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
         let et, eop, str = cmp_exp c e in
         (* if et != t then failwith "typemismatch in assignment"; *)
         (c, [ I (gensym "s", Store (et, eop, op)) ] @ str)
-    | Index (l1, l2) -> failwith "index assignment not implemented"
+    | Index (l1, l2) -> cmp_index l1 l2 e
     | _ -> failwith "invalid assignment lhs"
   in
   let cmp_if (e : exp node) (if_stmts : stmt node list)
