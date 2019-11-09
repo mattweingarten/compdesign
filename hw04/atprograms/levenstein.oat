@@ -1,3 +1,6 @@
+/* 16923229, Simon Rodoni */
+/* 17921537, Matthew Weingarten */
+
 int min3 (int i1, int i2, int i3) {
     var res = 0;
     if (i1 < i2) { res = i1; }
@@ -27,6 +30,7 @@ int levenstein (string s1, string s2) {
     return res;
 }
 
+/* TODO: use args for strings (?) */
 int program (int argc, string[] argv) {
     var str1 = "test";
     var str2 = "text";

@@ -252,8 +252,18 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
   let cmp_id (id : Ast.id) : Ll.ty * Ll.operand * stream =
     let t, operand = Ctxt.lookup id c in
     let sym = gensym "l" in
-    (*l for load instructions*)
-    (t, Id sym, [ I (sym, Load (Ptr t, operand)) ])
+    let sym_b = gensym "bc" in
+    let str =
+      match t with
+      | Ptr (Array (_, I8)) ->
+          lift
+            [
+              (sym_b, Bitcast (t, operand, Ptr I8));
+              (sym, Load (Ptr I8, Id sym_b));
+            ]
+      | _ -> [ I (sym, Load (Ptr t, operand)) ]
+    in
+    (t, Id sym, str)
   in
 
   let cmp_string (s : string) : Ll.ty * Ll.operand * stream =
@@ -286,7 +296,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let args_list = List.map (fun (t, op, _) -> (t, op)) cmp_es in
     let initial = [ I (new_sym, Call (ret_t, fname, args_list)) ] in
     let new_str =
-      (List.flatten @@ List.map (fun (_, _, str) -> str) cmp_es) @ initial
+      List.flatten @@ List.map (fun (_, _, str) -> str) cmp_es >@ initial
     in
     (ret_t, Id new_sym, new_str)
   in
@@ -516,6 +526,7 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     )
   in
 
+  (* TODO: fix call *)
   match stmt.elt with
   | Assn (lhs, e) -> cmp_ass lhs e
   | Decl (id, e) -> cmp_dec id e
