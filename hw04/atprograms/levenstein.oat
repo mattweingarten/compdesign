@@ -1,0 +1,49 @@
+/* 16923229, Simon Rodoni */
+/* 17921537, Matthew Weingarten */
+
+int min3 (int i1, int i2, int i3) {
+    var res = 0;
+    if (i1 < i2) { res = i1; }
+    else { res = i2; }
+    if (i3 < res) {res = i3; }
+    return res;
+}
+
+int levenstein (string s1, string s2) {
+    var l1 = length_of_string(s1);
+    var l2 = length_of_string(s2);
+    var res = 0;
+    if (l1 == 0) { res = l2; }
+    else if (l2 == 0) { res = l1; }
+    else {
+        var s1_arr = array_of_string(s1);
+        var s2_arr = array_of_string(s2);
+        var dp = new int[][l2+1];
+
+        for (var i = 0; i <= l1; i = i + 1;) {
+            dp[i] = new int[l1 + 1];
+        }
+
+        for (var i = 0; i <= l1; i = i+1;) {
+            for (var j = 0; j <= l2; j = j+1;) {
+                print_int(dp[i][j]);
+            }
+        }
+
+        for (var i = 1; i <= l1; i = i + 1;) {
+            for (var j = 1; j <= l2; j = j + 1;) {
+                if (s1_arr[i-1] == s2_arr[j-1]) { dp[i][j] = dp[i-1][j-1]; }
+                else { dp[i][j] = 1 + min3(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]); }
+            }
+        }
+        res = dp[l1][l2];
+    }
+    return res;
+}
+
+/* TODO: use args for strings (?) */
+int program(int argc, string[] argv) {
+    var str1 = "test";
+    var str2 = "text";
+    return levenstein(str1, str2);
+}

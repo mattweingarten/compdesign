@@ -1,0 +1,212 @@
+/* 17-929-563, Jan Schär */
+/* 17-916-990, Sandro Rüegge */
+
+global t_or = 1;
+global t_concat = 2;
+global t_star = 3;
+global t_empty = 4;
+global t_char = 5;
+global t_dot = 6;
+
+global ast_nodes = int[][]{int[] null};
+
+global next_id = 0;
+global allocated_ast = 1;
+
+int alloc_ast_node (int[] ast_node) {
+  if (next_id == allocated_ast) {
+    var new_alloc = allocated_ast * 2;
+    var new_arr = new int[][new_alloc];
+    for (var i = 0; i < allocated_ast; i = i + 1;) {
+      new_arr[i] = ast_nodes[i];
+    }
+    ast_nodes = new_arr;
+    allocated_ast = new_alloc;
+  }
+  var ret = next_id;
+  next_id = next_id + 1;
+  ast_nodes[ret] = ast_node;
+  return ret;
+}
+
+void fail (string msg) {
+  print_string(msg);
+  print_string("\n");
+  print_string(string null); /* crash */
+  return;
+}
+
+global lparen = 40; /* ( */
+global rparen = 41; /* ) */
+global star = 42;   /* * */
+global dot = 46;   /* . */
+global pipe = 124;  /* | */
+
+/* return: ast_id, pos */
+int[] parse_r (int[] regex, int pos, int len) {
+  var a = parse_c(regex, pos, len);
+  if (a[1] == len) {
+    return a;
+  }
+  if (regex[a[1]] != pipe) {
+    return a;
+  }
+  var b = parse_r(regex, a[1] + 1, len);
+  return new int[]{
+    alloc_ast_node(new int[]{t_or, a[0], b[0]}),
+    b[1]
+  };
+}
+
+int[] parse_c (int[] regex, int pos, int len) {
+  var a = parse_m(regex, pos, len);
+  if (a[1] == len) {
+    return a;
+  }
+  if (regex[a[1]] == rparen | regex[a[1]] == pipe) {
+    return a;
+  }
+  var b = parse_c(regex, a[1], len);
+  return new int[]{
+    alloc_ast_node(new int[]{t_concat, a[0], b[0]}),
+    b[1]
+  };
+}
+
+int[] parse_m (int[] regex, int pos, int len) {
+  var a = parse_s(regex, pos, len);
+  if (a[1] == len) {
+    return a;
+  }
+  if (regex[a[1]] != star) {
+    return a;
+  }
+  return new int[]{
+    alloc_ast_node(new int[]{t_star, a[0], 0}),
+    a[1] + 1
+  };
+}
+
+int[] parse_s (int[] regex, int pos, int len) {
+  var empty = pos == len;
+  if (!empty) { /* because no short-circuiting */
+    empty = regex[pos] == rparen | regex[pos] == pipe;
+  }
+  if (empty) {
+    return new int[]{
+      alloc_ast_node(new int[]{t_empty, 0, 0}),
+      pos
+    };
+  }
+  if (regex[pos] == star) {
+    fail("unexpected *");
+  }
+  if (regex[pos] == lparen) {
+    var a = parse_r(regex, pos + 1, len);
+    if (a[1] == len) {
+      fail("unclosed group");
+    }
+    if (regex[a[1]] != rparen) {
+      fail("unclosed group");
+    }
+    return new int[]{a[0], a[1] + 1};
+  }
+  if (regex[pos] == dot) {
+    return new int[]{
+      alloc_ast_node(new int[]{t_dot, 0, 0}),
+      pos + 1
+    };
+  }
+  return new int[]{
+    alloc_ast_node(new int[]{t_char, regex[pos], 0}),
+    pos + 1
+  };
+}
+
+int parse_regex (string regex) {
+  var len = length_of_string(regex);
+  var regex_arr = array_of_string(regex);
+  var res = parse_r(regex_arr, 0, len);
+  if (res[1] != len) {
+    fail("too many )");
+  }
+  return res[0];
+}
+
+bool run_regex_arr (int id, int[] arr, int start, int end) {
+  var node = ast_nodes[id];
+  var t = node[0];
+  var len = end - start;
+  if (t == t_or) {
+    if (run_regex_arr(node[1], arr, start, end)) {
+      return true;
+    }
+    return run_regex_arr(node[2], arr, start, end);
+  } else if (t == t_concat) {
+    for (var mid = start; mid <= end; mid = mid + 1;) {
+      if (run_regex_arr(node[1], arr, start, mid)) {
+        if (run_regex_arr(node[2], arr, mid, end)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } else if (t == t_star) {
+    if (len == 0) {
+      return true;
+    }
+    for (var mid = start + 1; mid <= end; mid = mid + 1;) {
+      if (run_regex_arr(node[1], arr, start, mid)) {
+        if (run_regex_arr(id, arr, mid, end)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } else if (t == t_empty) {
+    return len == 0;
+  } else {
+    if (len != 1) {
+      return false;
+    }
+    if (t == t_char) {
+      return arr[start] == node[1];
+    }
+    /* else t_dot */
+    return true;
+  }
+  return false; /* just to make it easier for the compiler */
+}
+
+bool run_regex (int regex_ast, string input) {
+  return run_regex_arr(regex_ast, array_of_string(input),
+    0, length_of_string(input));
+}
+
+int program (int argc, string[] argv) {
+
+  var regex1 = parse_regex("ab(|c(d.)*)");
+
+  var inputs = new string[]{
+    "",
+    "abcd",
+    "abcddddddddd",
+    "abd",
+    "bbcd",
+    "ab",
+    "abc",
+    "abcdv",
+    "abcdvdkdk",
+    "abcdddddddddddd"
+  };
+
+  for (var i = 0; i < 10; i = i + 1;) {
+    if (run_regex(regex1, inputs[i])) {
+      print_string("t");
+    } else {
+      print_string("f");
+    }
+  }
+
+  return 0;
+}

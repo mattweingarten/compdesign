@@ -1,0 +1,60 @@
+/* 16-916-421, Stefan Zemljic */
+
+void bucket_sort(int[] a, int len) { 
+  if (len <= 0) {
+    return;
+  }
+  var max = a[0];
+  var min = a[0];
+  for (var i = 0; i < len; i = i + 1;) {
+    var value = a[i];
+    if (value > max) {
+      max = value;
+    }
+    if (value < min) {
+      min = value;
+    }
+  }
+  var length = max - min + 1;
+  if (length > 1000) {
+    print_string(string_cat("Too many buckets needed: ", string_of_int(length)));
+    return;
+  }
+  var buckets = new int[length];
+  for (var i = 0; i < len; i = i + 1;) {
+    var index = a[i] - min;
+    buckets[index] = buckets[index] + 1;
+  }
+  var j = 0;
+  for (var i = 0; i < length; i = i + 1;) {
+    var value = i + min;
+    var count = buckets[i];
+    for (var c = 0; c < count; c = c + 1;) {
+      a[j] = value;
+      j = j + 1;
+    }
+  }
+  return;
+}
+
+int program (int argc, string[] argv) {
+  var len = 30;
+  var arr = new int[]{57, 61, 64, 59, 64, 60, 66, 50, 51, 68, 58, 62, 50, 68, 56, 57, 62, 51, 65, 68, 64, 65, 54, 54, 55, 54, 63, 70, 54, 68};
+
+  bucket_sort(arr, len);
+  
+  var first = true;
+  var last = 0;
+  
+  for (var i = 0; i < len; i = i + 1;) {
+    var cur = arr[i];
+    if (!first & cur < last) {
+      return 0;
+    } else {
+      first = false;
+      last = cur;
+    }
+  }
+  
+  return 42;
+}

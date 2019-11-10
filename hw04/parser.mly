@@ -27,6 +27,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token TRUE     /* true */
 %token FALSE    /* false */
 %token NEW      /* new */
+%token GLOBAL   /* global */
 
 %token SEMI     /* ; */
 %token COMMA    /* , */
@@ -55,7 +56,6 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token RBRACKET /* ] */
 %token TILDE    /* ~ */
 %token BANG     /* ! */
-%token GLOBAL   /* global */
 
 %left IOR
 %left IAND
@@ -156,23 +156,19 @@ lhs:
                         { loc $startpos $endpos @@ Index (e, i) }
 
 exp:
-  | id=IDENT            { loc $startpos $endpos @@ Id id }
   | i=INT               { loc $startpos $endpos @@ CInt i }
   | s=STRING            { loc $startpos $endpos @@ CStr s }
   | t=ty NULL           { loc $startpos $endpos @@ CNull t }
   | b=TRUE              { loc $startpos $endpos @@ CBool true }
   | b=FALSE             { loc $startpos $endpos @@ CBool false }
-  | e=exp LBRACKET i=exp RBRACKET
-                        { loc $startpos $endpos @@ Index (e, i) }
   | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN
                         { loc $startpos $endpos @@ Call (e,es) }
   | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE
-    { loc $startpos $endpos @@ CArr (t, es) }
+                        { loc $startpos $endpos @@ CArr (t, es) }
   | NEW t=ty LBRACKET e=exp RBRACKET { loc $startpos $endpos @@ NewArr (t, e) }
   | e1=exp b=bop e2=exp { loc $startpos $endpos @@ Bop (b, e1, e2) }
   | u=uop e=exp         { loc $startpos $endpos @@ Uop (u, e) }
   | l=lhs               { l }
-  | g=gexp              { g }
   | LPAREN e=exp RPAREN { e }
 
 vdecl:

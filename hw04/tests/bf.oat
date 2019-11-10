@@ -1,0 +1,118 @@
+/* 15734338, Shime Henry */
+/* 17925561, Till Arnold */
+
+int run_bf(string s_code, string s_input, int data_size) {
+	var ip = 0;
+	var input = array_of_string(s_input);
+	var code = array_of_string(s_code);
+
+	var data = new int[data_size];
+	var data_pointer = 0;
+	var input_pointer = 0;
+
+  var pLUS = 43;
+	var mINUS = 45;
+	var lT = 60;
+	var gT = 62;
+	var dOT = 46;
+	var cOM = 44;
+	var lB = 91;
+	var rB = 93;
+
+	while(code[ip] != 0) {
+		if(data_pointer >= data_size) {
+			print_string("ERROR: Out of bounds\n");
+			return 1;
+		}
+
+		var ins = code[ip];
+
+		if(ins == pLUS) {
+			data[data_pointer] = 1 + data[data_pointer];
+		}	
+		else if (ins == mINUS) {
+			data[data_pointer] = data[data_pointer]- 1;
+		}
+		else if (ins == gT) {
+			data_pointer = data_pointer + 1;
+		}
+	  else if (ins == lT) {
+			data_pointer = data_pointer- 1;
+		}
+		else if (ins == dOT) {
+			var bb = int[]{0};
+			if(data[data_pointer] == 0) {
+				print_string("ERROR: Tried to print a 0 bit\n");
+				return 1;
+			}
+			bb[0] = data[data_pointer];
+			
+			print_string(string_of_array(bb));
+		}
+		else if (ins == cOM) {
+			if(input[input_pointer] == 0) {	
+				print_string("ERROR: Not enough input\n");
+				return 1;
+			}	
+			else {
+				data[data_pointer] = input[input_pointer];
+				input_pointer= 1 + input_pointer;
+			}
+		}
+		else if( ins == lB) {
+			if(data[data_pointer] == 0) {
+				var count = 0;
+				ip = ip + 1;
+				while(count != 0 | code[ip] != rB) {
+					if(code[ip] == lB) {
+						count = count + 1;
+					}
+					if(code[ip] == rB) {
+						count = count - 1;
+					}
+					ip = ip + 1;
+				}
+			}
+		}
+		else if (ins == rB) {
+			if(data[data_pointer] != 0) {
+				var count = 0;
+				ip = ip -1;
+				while(count != 0 | code[ip] != lB) {
+					if(code[ip] == lB) {
+						count = count -1;
+					}
+					if(code[ip] == rB) {
+						count = count + 1;
+					}
+					ip = ip -1;
+				}
+			}
+		}
+		ip = ip + 1;
+		if(data_pointer >= data_size) {
+			print_string("ERROR: Out of bounds\n");
+			return 1;
+		}
+	}
+
+	print_string("BF return value: ");
+	print_string(string_of_int(data[data_pointer]));
+	print_string("\n");
+	return 0;
+}
+int program(int argc, string[] argv) {
+	if(argc < 3) {
+		print_string("usage: bf PROGRAM... INPUT\n");
+		return 1;
+	}
+	var code = "";
+	for(var i = 1; i< (argc-1); i = i + 1;) {
+		code = string_cat(code, argv[i]);	
+	}
+	var input = argv[argc-1];
+
+	return run_bf(code, input, 20000);
+	return 0;
+}
+

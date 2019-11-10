@@ -1,0 +1,75 @@
+/* 17-913-542, Silas Walker */
+/* 17-916-131, Silvan Bitterli */
+
+int[][] partition_array(int[] a, int split_point, int len) {
+  var split_a = new int[][]{new int[split_point], new int[len - split_point]};
+
+  for (var i = 0; i < len; i = i + 1;) {
+    if (i < split_point) {
+      split_a[0][i] = a[i];
+    } else {
+      split_a[1][i - split_point] = a[i];
+    }
+  }
+
+  return split_a;
+}
+
+int[] merge(int[] a, int[] b, int len1, int len2) {
+  var merged_a = new int[len1 + len2];
+  var i = 0;
+  var i1 = 0;
+  var i2 = 0;
+
+  while (i1 < len1 & i2 < len2) {
+    if (a[i1] <= b[i2]) {
+      merged_a[i] = a[i1];
+      i1 = i1 + 1;
+    } else {
+      merged_a[i] = b[i2];
+      i2 = i2 + 1;
+    }
+    i = i + 1;
+  }
+
+  while (i1 < len1) {
+    merged_a[i] = a[i1];
+    i1 = i1 + 1;
+    i = i + 1;
+  }
+
+  while (i2 < len2) {
+    merged_a[i] = b[i2];
+    i2 = i2 + 1;
+    i = i + 1;
+  }
+
+  return merged_a;
+}
+
+
+int[] merge_sort(int[] a, int len) {
+  if (len <= 1) {
+    return a;
+  }
+
+  var split_point = ((len-1) >>> 1) + 1;
+  var split_a = partition_array(a, split_point, len);
+
+  var res1 = merge_sort(split_a[0], split_point);
+  var res2 = merge_sort(split_a[1], len - split_point);
+
+  var a = merge(res1, res2, split_point, len - split_point);
+
+  return a;
+}
+
+int program (int argc, string[] argv) {
+  var a = new int[]{108, 107, 100, 102, 106, 107, 119, 101, 103, 107, 108, 106, 100, 102, 104, 108, 106, 119, 101, 103, 114, 110, 107, 108, 106, 115, 118, 102, 119, 43, 46, 97};
+
+  print_string(string_of_array(a));
+  a = merge_sort(a, 32);
+  print_string(string_of_array(a));
+
+  return 255;
+}
