@@ -1,0 +1,85 @@
+/* 16929010, Patrick Ziegler */
+/* 16914582, Lukas Heimes */
+
+/**
+ * This program tries to convert the input string to a positive integer
+ * and prints all prime numbers up to (excl.) that integer.
+ * It computes the primes using the Sieve of Eratosthenes.
+ */
+
+int to_digit(int c) {
+    /* digits 0 - 9 are ASCII characters 48 - 57 */
+    if (c >= 48 & c <= 57) {
+        return c - 48;
+    }
+
+    return -1;
+}
+
+/* 
+ * converts a string representing a positive integer
+ * to the corresponding integer;
+ * returns -1 if the string does not represent a positive integer
+ */
+int int_of_string(string str) {
+    var len = length_of_string(str);
+    var arr = array_of_string(str);
+
+    var n = 0;
+    for (var i = len - 1, var p = 1; i >= 0; i = i - 1;) {
+        var digit = to_digit(arr[i]);
+
+        if (digit == -1) {
+            return -1;
+        }
+
+        n = n + p * digit;
+        p = p * 10;
+    }
+
+    return n;
+}
+
+/*
+ * Prints all prime numbers up to (excl.) n
+ */
+void print_primes(int n) {
+    var isComposite = new bool[n];
+
+    /* find the square root of n (rounded up) */
+    var r = 1;
+    while (r * r < n) {
+        r = r + 1;
+    }
+
+    for (var i = 2; i < r; i = i + 1;) {
+        if (!isComposite[i]) {
+            /* eliminate multiples */
+            for (var j = i * i; j < n; j = j + i;) {
+                isComposite[j] = true;
+            }
+        }
+    }
+
+    /* output */
+    for (var i = 2; i < n; i = i + 1;) {
+        if (!isComposite[i]) {
+            print_int(i);
+            print_string(" ");
+        }
+    }   
+
+    return;
+}
+
+int program(int argc, string[] argv) {
+    if (argc > 1) {
+        var n = int_of_string(argv[1]);
+        if (n >= 0) {
+            print_primes(n);
+            return 0;
+        }
+    }
+
+    return 1;
+}

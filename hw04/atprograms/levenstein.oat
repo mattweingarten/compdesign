@@ -32,7 +32,7 @@ int levenstein (string s1, string s2) {
 
         for (var i = 1; i <= l1; i = i + 1;) {
             for (var j = 1; j <= l2; j = j + 1;) {
-                if (s1_arr[i] == s2_arr[j]) { dp[i][j] = dp[i-1][j-1]; }
+                if (s1_arr[i-1] == s2_arr[j-1]) { dp[i][j] = dp[i-1][j-1]; }
                 else { dp[i][j] = 1 + min3(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]); }
             }
         }

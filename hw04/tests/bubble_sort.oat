@@ -1,0 +1,31 @@
+/* 10-018-894,Fabian Schuiki */
+/* 15-927-361,Florian Zaruba */
+
+void bubble_sort(int[] a, int len) {
+    var swapped = true;
+    while (swapped) {
+        swapped = false;
+        for (var i = 0; i < len - 1; i = i + 1;) {
+            if (a[i] > a[i + 1]) {
+                var tmp = a[i];
+                a[i] = a[i + 1];
+                a[i + 1] = tmp;
+                swapped = true;
+            }
+        }
+        len = len - 1;
+    }
+    return;
+}
+
+
+int program (int argc, string[] argv) {
+  var a = new int[]{107, 112, 121, 102, 123, 115, 104, 111, 109};
+
+  print_string(string_of_array(a));
+  bubble_sort(a, 9);
+  print_string(string_of_array(a));
+
+  return 255;
+}
+
