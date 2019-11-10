@@ -255,7 +255,10 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let sym_b = gensym "bc" in
     match (t, operand) with
     | Array (_, I8), Gid _ ->
-        (Ptr I8, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, Ptr I8)) ])
+        (* (Ptr I8, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, Ptr I8)) ]) *)
+        ( Ptr I8,
+          Id sym_b,
+          lift [ (sym_b, Gep (Ptr t, operand, [ Const 0L; Const 0L ])) ] )
     | Struct [ _; Array (_, t') ], Gid _ ->
         let ty = Ptr (Struct [ I64; Array (0, t') ]) in
         (ty, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, ty)) ])
