@@ -18,7 +18,18 @@ int levenstein (string s1, string s2) {
     else {
         var s1_arr = array_of_string(s1);
         var s2_arr = array_of_string(s2);
-        var dp = new int[l1+1][l2+1];
+        var dp = new int[][l2+1];
+
+        for (var i = 0; i <= l1; i = i + 1;) {
+            dp[i] = new int[l1 + 1];
+        }
+
+        for (var i = 0; i <= l1; i = i+1;) {
+            for (var j = 0; j <= l2; j = j+1;) {
+                print_int(dp[i][j]);
+            }
+        }
+
         for (var i = 1; i <= l1; i = i + 1;) {
             for (var j = 1; j <= l2; j = j + 1;) {
                 if (s1_arr[i] == s2_arr[j]) { dp[i][j] = dp[i-1][j-1]; }
@@ -31,7 +42,7 @@ int levenstein (string s1, string s2) {
 }
 
 /* TODO: use args for strings (?) */
-int program (int argc, string[] argv) {
+int program(int argc, string[] argv) {
     var str1 = "test";
     var str2 = "text";
     return levenstein(str1, str2);

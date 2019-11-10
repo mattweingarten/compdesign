@@ -268,11 +268,9 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
   let cmp_string (s : string) : Ll.ty * Ll.operand * stream =
     let s_sym = gensym "string" in
     let g_sym = gensym "g" in
-    let b_sym = gensym "b" in
     let len = 1 + String.length s in
     let str =
       [
-        (* I (b_sym, Bitcast (Ptr (Array (len, I8)), Id g_sym, Ptr I8)); *)
         I (g_sym, Gep (Ptr (Array (len, I8)), Gid s_sym, [ Const 0L; Const 0L ]));
         G (s_sym, (Array (len, I8), GString s));
       ]
@@ -308,7 +306,9 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let final_t =
       match t1 with
       | Ptr (Struct [ _; Array (_, t) ]) -> t
-      | _ -> failwith @@ "not array " ^ string_of_ty t1 ^ string_of_operand op1
+      | _ ->
+          failwith @@ "not array " ^ string_of_ty t1 ^ " "
+          ^ string_of_operand op1
     in
     ( final_t,
       Id new_l,
@@ -349,13 +349,20 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     (fst3 alloc, snd3 alloc, thd3 alloc >@ str)
   in
 
+  let cmp_newarr (t : ty) (e : exp node) : Ll.ty * Ll.operand * stream =
+    let t_e, op_e, str_e = cmp_exp c e in
+    let t_a, op_a, str_a = oat_alloc_array t op_e in
+    (t_a, op_a, str_e >@ str_a)
+  in
+
   match exp.elt with
   | CNull t -> (cmp_ty t, Null, [])
   | CBool b -> if b = true then (I1, Const 1L, []) else (I1, Const 0L, [])
   | CInt i -> (I64, Const i, [])
   | CStr s -> cmp_string s
   | CArr (t, es) -> cmp_carr t es
-  | NewArr (t, e) -> oat_alloc_array t (snd3 @@ cmp_exp c e)
+  | NewArr (t, e) ->
+      cmp_newarr t e (* oat_alloc_array t (snd3 @@ cmp_exp c e) *)
   | Id id -> cmp_id id
   | Index (e1, e2) -> cmp_index e1 e2
   | Call (e, es) -> cmp_call e es
