@@ -352,6 +352,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
   let cmp_newarr (t : ty) (e : exp node) : Ll.ty * Ll.operand * stream =
     let t_e, op_e, str_e = cmp_exp c e in
     let t_a, op_a, str_a = oat_alloc_array t op_e in
+
     (t_a, op_a, str_e >@ str_a)
   in
 
@@ -418,10 +419,10 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
 
   let cmp_dec (id : Ast.id) (e : exp node) : Ctxt.t * stream =
     let t, operand, str = cmp_exp c e in
-    let new_symbol_a = gensym "a" in
     (*use a for alloca pointers*)
-    let new_symbol_s = gensym "s" in
+    let new_symbol_a = gensym "a" in
     (*use s for store*)
+    let new_symbol_s = gensym "s" in
     let new_str =
       [
         I (new_symbol_s, Store (t, operand, Id new_symbol_a));
@@ -433,8 +434,8 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     (new_ctxt, new_str)
   in
 
-  let cmp_index (e1 : exp node) (e2 : exp node) (e : exp node) : Ctxt.t * stream
-      =
+  let cmp_index_ass (e1 : exp node) (e2 : exp node) (e : exp node) :
+      Ctxt.t * stream =
     let t1, op1, str1 = cmp_exp c e1 in
     let t2, op2, str2 = cmp_exp c e2 in
     let t, op, str = cmp_exp c e in
@@ -463,7 +464,7 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
         let et, eop, str = cmp_exp c e in
         (* if et != t then failwith "typemismatch in assignment"; *)
         (c, [ I (gensym "s", Store (et, eop, op)) ] @ str)
-    | Index (l1, l2) -> cmp_index l1 l2 e
+    | Index (l1, l2) -> cmp_index_ass l1 l2 e
     | _ -> failwith "invalid assignment lhs"
   in
   let cmp_if (e : exp node) (if_stmts : stmt node list)

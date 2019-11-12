@@ -156,6 +156,9 @@ lhs:
                         { loc $startpos $endpos @@ Index (e, i) }
 
 exp:
+  | id=IDENT            { loc $startpos $endpos @@ Id id }
+  | e=exp LBRACKET i=exp RBRACKET
+                        { loc $startpos $endpos @@ Index (e, i) }
   | i=INT               { loc $startpos $endpos @@ CInt i }
   | s=STRING            { loc $startpos $endpos @@ CStr s }
   | t=ty NULL           { loc $startpos $endpos @@ CNull t }
