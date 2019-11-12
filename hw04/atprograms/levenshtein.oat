@@ -42,20 +42,6 @@ int levenshtein (string s1, string s2) {
     return res;
 }
 
-int levenshtein_rec (string str1, string str2, int i, int j) {
-    var s1 = array_of_string(str1);
-    var s2 = array_of_string(str2);
-    if (i == 0) { return j; }
-    else if (j == 0) { return i; }
-    else {
-        if (s1[i-1] == s2[j-1]) { return levenshtein_rec(str1, str2, i-1, j-1); }
-        else {
-            return 1 + min3(levenshtein_rec(str1, str2, i-1, j), levenshtein_rec(str1, str2, i, j-1), levenshtein_rec(str1, str2, i-1, j-1));
-        }
-    }
-    return -1;
-}
-
 int program(int argc, string[] argv) {
     var strs = new string[]{
         "text",
@@ -66,15 +52,6 @@ int program(int argc, string[] argv) {
         "mechanics",
         "machine"
     };
-    var i = 0;
-    var j = 1;
-    /*print_int(levenshtein_rec(strs[i], strs[j], length_of_string(strs[i]), length_of_string(strs[j])));
-    i = 0;
-    j = 2;
-    print_int(levenshtein_rec(strs[i], strs[j], length_of_string(strs[i]), length_of_string(strs[j])));
-    i = 2;
-    j = 1;
-    print_int(levenshtein_rec(strs[i], strs[j], length_of_string(strs[i]), length_of_string(strs[j])));*/
     print_int(levenshtein(strs[0], strs[1]));
     print_int(levenshtein(strs[0], strs[2]));
     print_int(levenshtein(strs[2], strs[1]));
