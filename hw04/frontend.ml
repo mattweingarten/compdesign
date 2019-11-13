@@ -38,28 +38,28 @@ let cfg_of_stream (code : stream) : Ll.cfg * (Ll.gid * Ll.gdecl) list =
   let gs, einsns, insns, term_opt, blks =
     List.fold_left
       (fun (gs, einsns, insns, term_opt, blks) e ->
-        match e with
-        | L l -> (
-            match term_opt with
-            | None ->
-                if List.length insns = 0 then (gs, einsns, [], None, blks)
-                else
-                  failwith
-                  @@ Printf.sprintf
-                       "build_cfg: block labeled %s hasno terminator" l
-            | Some term -> (gs, einsns, [], None, (l, { insns; term }) :: blks)
-            )
-        | T t -> (gs, einsns, [], Some (Llutil.Parsing.gensym "tmn", t), blks)
-        | I (uid, insn) -> (gs, einsns, (uid, insn) :: insns, term_opt, blks)
-        | G (gid, gdecl) -> ((gid, gdecl) :: gs, einsns, insns, term_opt, blks)
-        | E (uid, i) -> (gs, (uid, i) :: einsns, insns, term_opt, blks))
+         match e with
+         | L l -> (
+             match term_opt with
+             | None ->
+               if List.length insns = 0 then (gs, einsns, [], None, blks)
+               else
+                 failwith
+                 @@ Printf.sprintf
+                   "build_cfg: block labeled %s hasno terminator" l
+             | Some term -> (gs, einsns, [], None, (l, { insns; term }) :: blks)
+           )
+         | T t -> (gs, einsns, [], Some (Llutil.Parsing.gensym "tmn", t), blks)
+         | I (uid, insn) -> (gs, einsns, (uid, insn) :: insns, term_opt, blks)
+         | G (gid, gdecl) -> ((gid, gdecl) :: gs, einsns, insns, term_opt, blks)
+         | E (uid, i) -> (gs, (uid, i) :: einsns, insns, term_opt, blks))
       ([], [], [], None, []) code
   in
   match term_opt with
   | None -> failwith "build_cfg: entry block has no terminator"
   | Some term ->
-      let insns = einsns @ insns in
-      (({ insns; term }, blks), gs)
+    let insns = einsns @ insns in
+    (({ insns; term }, blks), gs)
 
 (* compilation contexts ----------------------------------------------------- *)
 
@@ -85,7 +85,7 @@ module Ctxt = struct
     | _ -> failwith @@ id ^ " not bound to a function"
 
   let lookup_function_option (id : Ast.id) (c : t) : (Ll.ty * Ll.operand) option
-      =
+    =
     try Some (lookup_function id c) with _ -> None
 end
 
@@ -114,8 +114,8 @@ and cmp_rty : Ast.rty -> Ll.ty = function
   | Ast.RString -> I8
   | Ast.RArray u -> Struct [ I64; Array (0, cmp_ty u) ]
   | Ast.RFun (ts, t) ->
-      let args, ret = cmp_fty (ts, t) in
-      Fun (args, ret)
+    let args, ret = cmp_fty (ts, t) in
+    Fun (args, ret)
 
 and cmp_ret_ty : Ast.ret_ty -> Ll.ty = function
   | Ast.RetVoid -> Void
@@ -152,7 +152,7 @@ let size_oat_ty (t : Ast.ty) = 8L
    given size. Note "size" is an operand whose value can be computed at
    runtime *)
 let oat_alloc_array (t : Ast.ty) (size : Ll.operand) : Ll.ty * operand * stream
-    =
+  =
   let ans_id, arr_id = (gensym "array", gensym "raw_array") in
   let ans_ty = cmp_ty @@ TRef (RArray t) in
   let arr_ty = Ptr I64 in
@@ -192,7 +192,7 @@ let thd3 ((x : 'a), (y : 'b), (z : 'c)) : 'c = z
 *)
 
 let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
-    =
+  =
   let match_binop (op : Ast.binop) (t : Ll.ty) (op1 : Ll.operand)
       (op2 : Ll.operand) : Ll.insn =
     match op with
@@ -215,7 +215,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
   in
 
   let cmp_binop (op : binop) (e1 : exp node) (e2 : exp node) :
-      Ll.ty * Ll.operand * stream =
+    Ll.ty * Ll.operand * stream =
     let t = cmp_ty @@ thd3 @@ typ_of_binop op in
     let cmp_e1 = cmp_exp c e1 in
     let cmp_e2 = cmp_exp c e2 in
@@ -253,12 +253,12 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let sym_b = gensym "bc" in
     match (t, operand) with
     | Array (_, I8), Gid _ ->
-        ( Ptr I8,
-          Id sym_b,
-          lift [ (sym_b, Gep (Ptr t, operand, [ Const 0L; Const 0L ])) ] )
+      ( Ptr I8,
+        Id sym_b,
+        lift [ (sym_b, Gep (Ptr t, operand, [ Const 0L; Const 0L ])) ] )
     | Struct [ _; Array (_, t') ], Gid _ ->
-        let ty = Ptr (Struct [ I64; Array (0, t') ]) in
-        (ty, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, ty)) ])
+      let ty = Ptr (Struct [ I64; Array (0, t') ]) in
+      (ty, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, ty)) ])
     | _ -> (t, Id sym, [ I (sym, Load (Ptr t, operand)) ])
   in
 
@@ -274,8 +274,9 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     in
     (Ptr I8, Id g_sym, str)
   in
+
   let cmp_call (e : exp node) (es : exp node list) : Ll.ty * Ll.operand * stream
-      =
+    =
     let id =
       match e.elt with Id id -> id | _ -> failwith "invalid call function"
     in
@@ -304,17 +305,17 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
       match t1 with
       | Ptr (Struct [ _; Array (_, t) ]) -> t
       | _ ->
-          failwith @@ "not array " ^ string_of_ty t1 ^ " "
-          ^ string_of_operand op1
+        failwith @@ "not array " ^ string_of_ty t1 ^ " "
+                    ^ string_of_operand op1
     in
     ( final_t,
       Id new_l,
       str1 >@ str2
       >@ lift
-           [
-             (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
-             (new_l, Load (Ptr final_t, Id new_s));
-           ] )
+        [
+          (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
+          (new_l, Load (Ptr final_t, Id new_s));
+        ] )
   in
 
   let cmp_carr (t : ty) (es : exp node list) : Ll.ty * Ll.operand * stream =
@@ -323,24 +324,24 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
       match els with
       | [] -> []
       | e :: els' ->
-          let t, op, str = cmp_exp c e in
-          let arr_id =
-            match List.hd (thd3 alloc) with
-            | I (i, _) -> i
-            | _ -> failwith "wrong"
-          in
-          let sym_elem = gensym "elem" in
-          str
-          >@ lift
-               [
-                 ( sym_elem,
-                   Gep
-                     ( fst3 alloc,
-                       Id arr_id,
-                       [ Const 0L; Const 1L; Const (Int64.of_int i) ] ) );
-                 (gensym "s", Store (t, op, Id sym_elem));
-               ]
-          >@ traverse_es els' (i + 1)
+        let t, op, str = cmp_exp c e in
+        let arr_id =
+          match List.hd (thd3 alloc) with
+          | I (i, _) -> i
+          | _ -> failwith "wrong"
+        in
+        let sym_elem = gensym "elem" in
+        str
+        >@ lift
+          [
+            ( sym_elem,
+              Gep
+                ( fst3 alloc,
+                  Id arr_id,
+                  [ Const 0L; Const 1L; Const (Int64.of_int i) ] ) );
+            (gensym "s", Store (t, op, Id sym_elem));
+          ]
+        >@ traverse_es els' (i + 1)
     in
     let str = traverse_es es 0 in
     (fst3 alloc, snd3 alloc, thd3 alloc >@ str)
@@ -367,7 +368,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
   | Uop (op, e) -> cmp_unop op e
 
 let cmp_exp_as (c : Ctxt.t) (exp : Ast.exp node) (t_final : Ll.ty) :
-    Ll.operand * stream =
+  Ll.operand * stream =
   let t, op, str = cmp_exp c exp in
   let new_sym = gensym "gc" in
   let new_str = [ I (new_sym, Bitcast (t, op, t_final)) ] @ str in
@@ -400,12 +401,12 @@ let cmp_exp_as (c : Ctxt.t) (exp : Ast.exp node) (t_final : Ll.ty) :
 
 *)
 let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
-    Ctxt.t * stream =
+  Ctxt.t * stream =
   let cmp_ret (op : exp node option) : Ctxt.t * stream =
     match op with
     | Some x ->
-        let t, o, s = cmp_exp c x in
-        (c, [ T (Ret (t, Some o)) ] @ s)
+      let t, o, s = cmp_exp c x in
+      (c, [ T (Ret (t, Some o)) ] @ s)
     | None -> (c, [ T (Ret (Void, None)) ])
   in
 
@@ -427,7 +428,7 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
   in
 
   let cmp_index_ass (e1 : exp node) (e2 : exp node) (e : exp node) :
-      Ctxt.t * stream =
+    Ctxt.t * stream =
     let t1, op1, str1 = cmp_exp c e1 in
     let t2, op2, str2 = cmp_exp c e2 in
     let t, op, str = cmp_exp c e in
@@ -442,21 +443,22 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     ( new_c,
       str1 >@ str2 >@ str
       >@ lift
-           [
-             (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
-             (new_l, Store (final_t, op, Id new_s));
-           ] )
+        [
+          (new_s, Gep (t1, op1, [ Const 0L; Const 1L; op2 ]));
+          (new_l, Store (final_t, op, Id new_s));
+        ] )
   in
 
   let cmp_ass (lhs : exp node) (e : exp node) : Ctxt.t * stream =
     match lhs.elt with
     | Id id ->
-        let t, op = Ctxt.lookup id c in
-        let et, eop, str = cmp_exp c e in
-        (c, [ I (gensym "s", Store (et, eop, op)) ] @ str)
+      let t, op = Ctxt.lookup id c in
+      let et, eop, str = cmp_exp c e in
+      (c, [ I (gensym "s", Store (et, eop, op)) ] @ str)
     | Index (l1, l2) -> cmp_index_ass l1 l2 e
     | _ -> failwith "invalid assignment lhs"
   in
+
   let cmp_if (e : exp node) (if_stmts : stmt node list)
       (else_stmts : stmt node list) : Ctxt.t * stream =
     let t, op, str = cmp_exp c e in
@@ -487,7 +489,7 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
 
   let cmp_for (vdecls : vdecl list) (eoption : exp node option)
       (stmtoption : stmt node option) (stmts : stmt node list) : Ctxt.t * stream
-      =
+    =
     let cmp_declarations =
       List.map (fun (id, exp) -> cmp_stmt c rt (no_loc (Decl (id, exp)))) vdecls
     in
@@ -514,17 +516,17 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
   | SCall (e, es) -> (c, thd3 @@ cmp_exp c (no_loc (Call (e, es))))
   | If (e, if_stmts, else_stmts) -> cmp_if e if_stmts else_stmts
   | For (vdecls, eoption, stmtoption, stmts) ->
-      cmp_for vdecls eoption stmtoption stmts
+    cmp_for vdecls eoption stmtoption stmts
   | While (e, stmts) -> cmp_while e stmts
 
 (* Compile a series of statements *)
 and cmp_block (c : Ctxt.t) (rt : Ll.ty) (stmts : Ast.block) : stream =
   snd
   @@ List.fold_left
-       (fun (c, code) s ->
-         let c, stmt_code = cmp_stmt c rt s in
-         (c, code >@ stmt_code))
-       (c, []) stmts
+    (fun (c, code) s ->
+       let c, stmt_code = cmp_stmt c rt s in
+       (c, code >@ stmt_code))
+    (c, []) stmts
 
 (* Adds each function identifer to the context at an
    appropriately translated type.
@@ -534,9 +536,9 @@ and cmp_block (c : Ctxt.t) (rt : Ll.ty) (stmts : Ast.block) : stream =
 let cmp_function_ctxt (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
   List.fold_left
     (fun c -> function
-      | Ast.Gfdecl { elt = { frtyp; fname; args } } ->
-          let ft = TRef (RFun (List.map fst args, frtyp)) in
-          Ctxt.add c fname (cmp_ty ft, Gid fname) | _ -> c)
+       | Ast.Gfdecl { elt = { frtyp; fname; args } } ->
+         let ft = TRef (RFun (List.map fst args, frtyp)) in
+         Ctxt.add c fname (cmp_ty ft, Gid fname) | _ -> c)
     c p
 
 (* Populate a context with bindings for global variables
@@ -554,15 +556,15 @@ let cmp_global_ctxt (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
     | CInt _ -> I64
     | CStr s -> Array (1 + String.length s, I8)
     | CArr (t, es) ->
-        let len = List.length es in
-        let t_inside = get_type_from_exp (List.hd es).elt in
-        Struct [ I64; Array (len, t_inside) ]
+      let len = List.length es in
+      let t_inside = get_type_from_exp (List.hd es).elt in
+      Struct [ I64; Array (len, t_inside) ]
     | _ -> failwith "Invalid  expression for global declarations."
   in
   List.fold_left
     (fun c -> function
-      | Ast.Gvdecl { elt = { name; init } } ->
-          Ctxt.add c name (get_type_from_exp @@ init.elt, Gid name) | _ -> c)
+       | Ast.Gvdecl { elt = { name; init } } ->
+         Ctxt.add c name (get_type_from_exp @@ init.elt, Gid name) | _ -> c)
     c p
 
 (* Compile a function declaration in global context c. Return the LLVMlite cfg
@@ -577,7 +579,7 @@ let cmp_global_ctxt (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
    4. Use cfg_of_stream to produce a LLVMlite cfg from
 *)
 let cmp_fdecl (c : Ctxt.t) (f : Ast.fdecl node) :
-    Ll.fdecl * (Ll.gid * Ll.gdecl) list =
+  Ll.fdecl * (Ll.gid * Ll.gdecl) list =
   let f_type =
     (List.map (fun x -> cmp_ty @@ fst x) f.elt.args, cmp_ret_ty f.elt.frtyp)
   in
@@ -586,12 +588,12 @@ let cmp_fdecl (c : Ctxt.t) (f : Ast.fdecl node) :
   let allocate_params =
     List.flatten
     @@ List.map
-         (fun ((t_ast, id), new_sym) ->
-           let t = cmp_ty t_ast in
-           [
-             I (gensym "s", Store (t, Id id, Id new_sym)); E (new_sym, Alloca t);
-           ])
-         (List.combine f.elt.args new_symbols)
+      (fun ((t_ast, id), new_sym) ->
+         let t = cmp_ty t_ast in
+         [
+           I (gensym "s", Store (t, Id id, Id new_sym)); E (new_sym, Alloca t);
+         ])
+      (List.combine f.elt.args new_symbols)
   in
   let new_ctxt =
     List.fold_left
@@ -602,7 +604,7 @@ let cmp_fdecl (c : Ctxt.t) (f : Ast.fdecl node) :
   let cfg =
     cfg_of_stream
     @@ cmp_block new_ctxt (snd f_type) f.elt.body
-    @ allocate_params
+       @ allocate_params
   in
   ({ f_ty = f_type; f_param = params; f_cfg = fst cfg }, snd cfg)
 
@@ -624,37 +626,37 @@ let rec cmp_gexp c (e : Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   | CBool b -> if b = true then ((I1, GInt 1L), []) else ((I1, GInt 0L), [])
   | CInt i -> ((I64, GInt i), [])
   | CStr s ->
-      let len = 1 + String.length s in
-      ((Array (len, I8), GString s), [])
+    let len = 1 + String.length s in
+    ((Array (len, I8), GString s), [])
   | CArr (t, es) -> (
       let len = List.length es in
       let arr_type = Struct [ I64; Array (len, cmp_ty t) ] in
       let g_es = List.map (fun e -> fst @@ cmp_gexp c e) es in
       match cmp_ty t with
       | Ptr (Struct _) ->
-          let add_decls = List.map (fun e -> (gensym "nested", e)) g_es in
-          ( ( arr_type,
-              GStruct
-                [
-                  (I64, GInt (Int64.of_int len));
-                  ( Array (len, cmp_ty t),
-                    GArray
-                      (List.map
-                         (fun d -> (fst (snd d), GGid (fst d)))
-                         add_decls) );
-                ] ),
-            add_decls )
+        let add_decls = List.map (fun e -> (gensym "nested", e)) g_es in
+        ( ( arr_type,
+            GStruct
+              [
+                (I64, GInt (Int64.of_int len));
+                ( Array (len, cmp_ty t),
+                  GArray
+                    (List.map
+                       (fun d -> (fst (snd d), GGid (fst d)))
+                       add_decls) );
+              ] ),
+          add_decls )
       | _ ->
-          ( ( arr_type,
-              GStruct
-                [
-                  (I64, GInt (Int64.of_int len));
-                  (Array (len, cmp_ty t), GArray g_es);
-                ] ),
-            [] ) )
+        ( ( arr_type,
+            GStruct
+              [
+                (I64, GInt (Int64.of_int len));
+                (Array (len, cmp_ty t), GArray g_es);
+              ] ),
+          [] ) )
   | x ->
-      failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e
-      ^ "for global declarations."
+    failwith @@ "Invalid  expression " ^ Astlib.string_of_exp e
+                ^ "for global declarations."
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [ ("oat_alloc_array", Ll.Fun ([ I64 ], Ptr I64)) ]
@@ -692,13 +694,13 @@ let cmp_prog (p : Ast.prog) : Ll.prog =
   let fdecls, gdecls =
     List.fold_right
       (fun d (fs, gs) ->
-        match d with
-        | Ast.Gvdecl { elt = gd } ->
-            let ll_gd, gs' = cmp_gexp c gd.init in
-            (fs, ((gd.name, ll_gd) :: gs') @ gs)
-        | Ast.Gfdecl fd ->
-            let fdecl, gs' = cmp_fdecl c fd in
-            ((fd.elt.fname, fdecl) :: fs, gs' @ gs))
+         match d with
+         | Ast.Gvdecl { elt = gd } ->
+           let ll_gd, gs' = cmp_gexp c gd.init in
+           (fs, ((gd.name, ll_gd) :: gs') @ gs)
+         | Ast.Gfdecl fd ->
+           let fdecl, gs' = cmp_fdecl c fd in
+           ((fd.elt.fname, fdecl) :: fs, gs' @ gs))
       p ([], [])
   in
 
