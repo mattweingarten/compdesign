@@ -25,7 +25,6 @@ type elt =
 
 (* hoisted entry block instructions *)
 
-(*TODO Hoist all alloca functions*)
 type stream = elt list
 
 let ( >@ ) x y = y @ x
@@ -191,7 +190,6 @@ let thd3 ((x : 'a), (y : 'b), (z : 'c)) : 'c = z
      correspond to gids that don't quite have the type you want
 
 *)
-(*TODO rest of expression compiling*)
 
 let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     =
@@ -456,7 +454,6 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
            ] )
   in
 
-  (*TODO assignment using indexing into arrays*)
   let cmp_ass (lhs : exp node) (e : exp node) : Ctxt.t * stream =
     match lhs.elt with
     | Id id ->
@@ -498,6 +495,7 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
   let cmp_for (vdecls : vdecl list) (eoption : exp node option)
       (stmtoption : stmt node option) (stmts : stmt node list) : Ctxt.t * stream
       =
+    (*
     let cond_lbl = gensym "condlbl" in
     let body_lbl = gensym "bodylbl" in
     let end_lbl = gensym "endlbl" in
@@ -531,9 +529,27 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
       [ L end_lbl ] @ [ T (Br cond_lbl) ] @ stmt_str @ body_str @ [ L body_lbl ]
       @ cond_br @ cond_str @ [ L cond_lbl ] @ [ T (Br cond_lbl) ] @ declarations
     )
+    *)
+    let cmp_declarations =
+      List.map (fun (id, exp) -> cmp_stmt c rt (no_loc (Decl (id, exp)))) vdecls
+    in
+    let decl_block =
+      List.flatten @@ List.map (fun (c, str) -> str) cmp_declarations
+    in
+    let new_ctxt =
+      c @ List.flatten @@ List.map (fun (c, str) -> c) cmp_declarations
+    in
+    let cond =
+      match eoption with Some exp -> exp | None -> no_loc (CBool true)
+    in
+    let stmt = match stmtoption with Some x -> [ x ] | None -> [] in
+    let while_t =
+      snd @@ cmp_stmt new_ctxt rt (no_loc @@ While (cond, stmts @ stmt))
+    in
+    (c, decl_block >@ while_t)
   in
 
-  (* TODO: fix call *)
+  (* TODO: fix for *)
   match stmt.elt with
   | Assn (lhs, e) -> cmp_ass lhs e
   | Decl (id, e) -> cmp_dec id e
@@ -645,7 +661,6 @@ let cmp_fdecl (c : Ctxt.t) (f : Ast.fdecl node) :
      be an array of pointers to arrays emitted as additional global declarations
 *)
 
-(*TODO: Compile global array decl and fix string*)
 let rec cmp_gexp c (e : Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   match e.elt with
   | CNull t -> ((cmp_ty t, GNull), [])
