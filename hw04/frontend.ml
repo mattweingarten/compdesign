@@ -223,8 +223,8 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let stream2 = thd3 cmp_e2 in
     let op1 = snd3 cmp_e1 in
     let op2 = snd3 cmp_e2 in
-    let new_symbol = gensym "b" in
     (*Use b for binop variable*)
+    let new_symbol = gensym "b" in
     let curr_stream = [ I (new_symbol, match_binop op t op1 op2) ] in
     (t, Ll.Id new_symbol, curr_stream @ stream1 @ stream2)
   in
@@ -241,8 +241,8 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let cmp_e1 = cmp_exp c e1 in
     let stream1 = thd3 cmp_e1 in
     let op1 = snd3 cmp_e1 in
-    let new_symbol = gensym "u" in
     (*Use u for binop variable*)
+    let new_symbol = gensym "u" in
     let curr_stream = [ I (new_symbol, match_unop op t op1) ] in
     (t, Ll.Id new_symbol, curr_stream @ stream1)
   in
@@ -253,7 +253,6 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
     let sym_b = gensym "bc" in
     match (t, operand) with
     | Array (_, I8), Gid _ ->
-        (* (Ptr I8, Id sym_b, lift [ (sym_b, Bitcast (Ptr t, operand, Ptr I8)) ]) *)
         ( Ptr I8,
           Id sym_b,
           lift [ (sym_b, Gep (Ptr t, operand, [ Const 0L; Const 0L ])) ] )
@@ -360,8 +359,7 @@ let rec cmp_exp (c : Ctxt.t) (exp : Ast.exp node) : Ll.ty * Ll.operand * stream
   | CInt i -> (I64, Const i, [])
   | CStr s -> cmp_string s
   | CArr (t, es) -> cmp_carr t es
-  | NewArr (t, e) ->
-      cmp_newarr t e (* oat_alloc_array t (snd3 @@ cmp_exp c e) *)
+  | NewArr (t, e) -> cmp_newarr t e
   | Id id -> cmp_id id
   | Index (e1, e2) -> cmp_index e1 e2
   | Call (e, es) -> cmp_call e es
@@ -408,10 +406,6 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     | Some x ->
         let t, o, s = cmp_exp c x in
         (c, [ T (Ret (t, Some o)) ] @ s)
-    (* begin match t with
-         | I1 | I64 | Ptr _ | Fun _ ->  (c, [T (Ret (t, Some o))] @ s)
-         | _ -> failwith "invalid return type"
-         end *)
     | None -> (c, [ T (Ret (Void, None)) ])
   in
 
@@ -459,7 +453,6 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     | Id id ->
         let t, op = Ctxt.lookup id c in
         let et, eop, str = cmp_exp c e in
-        (* if et != t then failwith "typemismatch in assignment"; *)
         (c, [ I (gensym "s", Store (et, eop, op)) ] @ str)
     | Index (l1, l2) -> cmp_index_ass l1 l2 e
     | _ -> failwith "invalid assignment lhs"
@@ -495,41 +488,6 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
   let cmp_for (vdecls : vdecl list) (eoption : exp node option)
       (stmtoption : stmt node option) (stmts : stmt node list) : Ctxt.t * stream
       =
-    (*
-    let cond_lbl = gensym "condlbl" in
-    let body_lbl = gensym "bodylbl" in
-    let end_lbl = gensym "endlbl" in
-
-    let cmp_declarations =
-      List.map (fun (id, exp) -> cmp_stmt c rt (no_loc (Decl (id, exp)))) vdecls
-    in
-    let declarations =
-      List.flatten @@ List.map (fun (c, str) -> str) cmp_declarations
-    in
-    let new_ctxt =
-      c @ List.flatten @@ List.map (fun (c, str) -> c) cmp_declarations
-    in
-    let cond_t, cond_op, cond_str =
-      match eoption with
-      | Some exp -> cmp_exp new_ctxt exp
-      | None -> cmp_exp new_ctxt (no_loc @@ CBool true)
-    in
-    if cond_t != I1 then failwith "non boolean expression in if statement";
-    let stmt_ctxt, stmt_str =
-      match stmtoption with
-      | Some x -> cmp_stmt new_ctxt rt x
-      | None -> (new_ctxt, [])
-    in
-    let body_str =
-      List.flatten
-      @@ List.map (fun stmt -> snd @@ cmp_stmt new_ctxt rt stmt) stmts
-    in
-    let cond_br = [ T (Cbr (cond_op, body_lbl, end_lbl)) ] in
-    ( c,
-      [ L end_lbl ] @ [ T (Br cond_lbl) ] @ stmt_str @ body_str @ [ L body_lbl ]
-      @ cond_br @ cond_str @ [ L cond_lbl ] @ [ T (Br cond_lbl) ] @ declarations
-    )
-    *)
     let cmp_declarations =
       List.map (fun (id, exp) -> cmp_stmt c rt (no_loc (Decl (id, exp)))) vdecls
     in
@@ -549,7 +507,6 @@ let rec cmp_stmt (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node) :
     (c, decl_block >@ while_t)
   in
 
-  (* TODO: fix for *)
   match stmt.elt with
   | Assn (lhs, e) -> cmp_ass lhs e
   | Decl (id, e) -> cmp_dec id e
