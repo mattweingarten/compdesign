@@ -1,6 +1,6 @@
 INCLUDES= util,x86,grading,ll
-LIBS = unix,str
-SUBMIT := lexer.mll parser.mly frontend.ml studenttests.ml
+LIBS = unix,str,nums
+SUBMIT := lexer.mll parser.mly frontend.ml team.txt
 
 HWNAME := hw04
 TIMESTAMP := $(shell /bin/date "+%Y-%m-%d-%H:%M:%S")
@@ -14,7 +14,7 @@ test: main.native
 	./main.native --test
 
 .PHONY: main.native
-main.native:
+main.native: 
 	ocamlbuild -Is $(INCLUDES) -libs $(LIBS) main.native -use-menhir -yaccflag --explain
 
 zip: $(SUBMIT)
