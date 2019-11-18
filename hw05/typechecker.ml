@@ -285,14 +285,45 @@ let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
    NOTE: global initializers may mention function identifiers as
    constants, but can't mention other global values *)
 
+
 let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
-  Tctxt.empty
+  let c = Tctxt.empty in
+  List.fold_right (fun decl ->
+    match decl with
+      | Gtdecl {elt=(id, fs)} -> begin match lookup_struct_option id c with
+          | Some _ -> fun c -> c
+          | None -> fun c -> add_struct c id fs;
+        end
+      | _ -> fun c -> c ) p c
+
+
 
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  Tctxt.empty
+  let check_function_type (arg_types: Ast.ty list) (ret_ty:ret_ty): unit =
+   let l = no_loc "" in
+   List.iter (fun t -> typecheck_ty l tc t) arg_types; typecheck_ret l tc ret_ty
+  in
+  List.fold_right (fun decl ->
+    match decl with
+      | Gfdecl {elt={frtyp=ret_ty;fname=id;args=args;body=body;}} ->
+        let arg_types = List.map(fun x -> fst x) args in
+        begin match lookup_global_option id tc with
+          | Some _ -> fun c -> c
+          | None -> fun c -> check_function_type arg_types ret_ty;add_global c id (TRef(RFun(arg_types, ret_ty)))
+        end
+      | _ -> fun c -> c
+    ) p tc
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  Tctxt.empty
+  List.fold_right (fun decl ->
+      match decl with
+        | Gvdecl {elt={name=id;init=exp}} ->
+          begin match lookup_global_option id tc with
+            | Some _ -> fun c -> c
+            | None -> fun c -> add_global c id (typecheck_exp c exp)
+          end
+        | _ -> fun c -> c
+    ) p tc
 
 
 (* This function implements the |- prog and the H ; G |- prog
