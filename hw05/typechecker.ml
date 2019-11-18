@@ -112,12 +112,13 @@ and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
       List.iter (typecheck_ty l tc) ts;
       typecheck_retty l tc rt
 
-(* wf_reftokokstruct *)
 and typecheck_struct (l : 'a Ast.node) (tc : Tctxt.t) (id : Ast.id) : unit =
-  failwith "todo"
+  match Tctxt.lookup_struct_option id tc with
+  | Some _ -> ()
+  | None -> type_error l @@ "undefined struct " ^ id
 
 and typecheck_retty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
-  failwith "todo"
+  match t with RetVoid -> () | RetVal ty -> typecheck_ty l tc ty
 
 (* typechecking expressions ------------------------------------------------- *)
 (* Typechecks an expression in the typing context c, returns the type of the
