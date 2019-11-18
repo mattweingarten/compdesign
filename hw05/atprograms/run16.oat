@@ -1,0 +1,6 @@
+int program (int argc, string[] argv) {
+  var x = 10;
+  var a = new int[][3]{i -> new int[3]{j -> x+i+j}};
+  var b = a;
+  return b[2][1]; 
+}

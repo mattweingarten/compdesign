@@ -29,7 +29,7 @@ int64_t* array_of_string (char *str) {
     arr[i+1]=(int64_t)str[i];
   }
 
-  return arr; 
+  return arr;
 }
 
 char* string_of_array (int64_t *arr) {
@@ -42,7 +42,7 @@ char* string_of_array (int64_t *arr) {
   assert (len >= 0);
 
   str = malloc(sizeof(char) * (len+1));
-  
+
   for (i=0; i<len; i++) {
     str[i] = (char)arr[i+1];
     assert (0 != str[i]);
@@ -96,18 +96,18 @@ void print_bool (int64_t i) {
 
 extern int64_t program(int64_t argc, int64_t* oargv);
 
-/* 
- * Convert the argv array into an Oat array of 
+/*
+ * Convert the argv array into an Oat array of
  * type string[]
  * Invoke the Oat 'program' entry point after
  * initializing the global variables.
- * Prints the results of the Oat program call 
+ * Prints the results of the Oat program call
  * to the terminal.
  */
 int main(int argc, char* argv[]) {
   int64_t *oargv, i, result;
 
-  oargv = oat_alloc_array(argc); 
+  oargv = oat_alloc_array(argc);
 
   /* Copy the string pointers to the correct places. */
   for (i=0; i<argc; i++){

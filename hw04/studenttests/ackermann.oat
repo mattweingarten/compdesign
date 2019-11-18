@@ -1,0 +1,21 @@
+/* 13-617-048,Lukas Kapp-Schwoerer */
+/* 15-916-018 Felix Lunzenfichter */
+
+int ack(int m, int n) {
+    if (m == 0) {
+        return n + 1;
+    } 
+
+    if (m > 0 & n == 0) {
+        return ack(m - 1, 1);
+    }
+
+    if (m > 0 & n > 0) {
+        return ack(m - 1, ack(m, n-1));
+    }
+    return -1;
+}
+
+int program (int argc, string[] argv) {
+    return ack(3, 4);
+}
