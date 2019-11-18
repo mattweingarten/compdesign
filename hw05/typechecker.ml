@@ -48,29 +48,28 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
 *)
 let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
   match (t1, t2) with
-  | TInt, TInt (* sub_sub_int *) | TBool, TBool -> true (* sub_sub_bool *)
-  | TNullRef rty1, TNullRef rty2 (* sub_sub_nref *)
-  | TRef rty1, TRef rty2 (* sub_sub_ref *)
+  | TInt, TInt | TBool, TBool -> true
+  | TNullRef rty1, TNullRef rty2
+  | TRef rty1, TRef rty2
   | TRef rty1, TNullRef rty2 ->
-      (* sub_sub_nrref *)
       subtype_ref c rty1 rty2
   | _ -> false
 
 (* Decides whether H |-r ref1 <: ref2 *)
 and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
   match (t1, t2) with
-  | RString, RString -> true (* sub_subrstring *)
-  | RArray at1, RArray at2 -> subtype c at1 at2 (* sub_subrarray *)
-  | RStruct id1, RStruct id2 -> subtype_struct c id1 id2 (* sub_subrstruct *)
+  | RString, RString -> true
+  | RArray at1, RArray at2 -> subtype c at1 at2
+  | RStruct id1, RStruct id2 -> subtype_struct c id1 id2
   | RFun (ts1, ret1), RFun (ts2, ret2) ->
       List.fold_left
         (fun x y -> x && y)
         true
         (List.map (fun (t1, t2) -> subtype c t1 t2) (List.combine ts1 ts2))
       && subtype_ret c ret1 ret2
-      (* sub_subrfunt *)
   | _ -> false
 
+(* will probably need fixing *)
 and subtype_struct (c : Tctxt.t) (id1 : Ast.id) (id2 : Ast.id) : bool =
   match
     (Tctxt.lookup_struct_option id1 c, Tctxt.lookup_struct_option id2 c)
@@ -100,7 +99,25 @@ and subtype_ret (c : Tctxt.t) (t1 : Ast.ret_ty) (t2 : Ast.ret_ty) : bool =
          - tc contains the structure definition context
       *)
 let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
-  failwith "todo: implement typecheck_ty"
+  match t with
+  | TInt | TBool -> ()
+  | TRef rt | TNullRef rt -> typecheck_refty l tc rt
+
+and typecheck_refty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
+  match t with
+  | RString -> ()
+  | RArray t -> typecheck_ty l tc t
+  | RStruct id -> typecheck_struct l tc id
+  | RFun (ts, rt) ->
+      List.iter (typecheck_ty l tc) ts;
+      typecheck_retty l tc rt
+
+(* wf_reftokokstruct *)
+and typecheck_struct (l : 'a Ast.node) (tc : Tctxt.t) (id : Ast.id) : unit =
+  failwith "todo"
+
+and typecheck_retty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
+  failwith "todo"
 
 (* typechecking expressions ------------------------------------------------- *)
 (* Typechecks an expression in the typing context c, returns the type of the
