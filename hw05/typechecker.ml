@@ -161,7 +161,39 @@ and typecheck_ret (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
 
 *)
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
-  failwith "todo: implement typecheck_exp"
+  let error = TypeError("Type mismatch in expression: " ^ (string_of_exp e) ^
+                        " at location" ^ (Range.string_of_range e.loc)) in
+
+
+  let typecheck_binop (op:binop) (e1:exp node) (e2:exp node): Ast.ty =
+    let t1,t2,t = typ_of_binop op in
+    let c1, c2 = (typecheck_exp c e1 , typecheck_exp c e2) in
+    if (c1 = t1 && c2 = t2) then t else raise error
+  in
+
+  let typecheck_unop (op:unop) (e:exp node) : Ast.ty =
+    let t1,t = typ_of_unop op in
+    let c1 = typecheck_exp c e in
+    if (c1 = t1) then t else raise error
+  in
+
+  begin match e.elt with
+    | CNull rty -> typecheck_ty e c (TRef rty); TNullRef rty
+    | CBool _ -> TBool
+    | CInt _ -> TInt
+    | CStr _ -> TRef (RString)
+    | Id id -> begin match lookup_option id c with | Some x -> x | None -> raise error end
+    | CArr _ -> failwith "unimplmented"
+    | NewArr _ -> failwith "unimplmented"
+    | Index _ -> failwith "unimplmented"
+    | Length _ -> failwith "unimplmented"
+    | CStruct _ -> failwith "unimplmented"
+    | Proj _ -> failwith "unimplmented"
+    | Call _ -> failwith "unimplemented"
+    | Bop (op, e1, e2) ->typecheck_binop op e1 e2
+    | Uop (op, e) -> typecheck_unop op e
+    (* | _ -> failwith "unimplemented" *)
+  end
 
 (* statements --------------------------------------------------------------- *)
 
