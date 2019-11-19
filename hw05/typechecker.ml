@@ -87,17 +87,17 @@ and subtype_ret (c : Tctxt.t) (t1 : Ast.ret_ty) (t2 : Ast.ret_ty) : bool =
 (* Implement a (set of) functions that check that types are well formed according
          to the H |- t and related inference rules
 
-         - the function should succeed by returning () if the type is well-formed
+   - the function should succeed by returning () if the type is well-formed
             according to the rules
 
-         - the function should fail using the "type_error" helper function if the
+   - the function should fail using the "type_error" helper function if the
             type is
 
-         - l is just an ast node that provides source location information for
+   - l is just an ast node that provides source location information for
             generating error messages (it's only needed for the type_error generation)
 
-         - tc contains the structure definition context
-      *)
+   - tc contains the structure definition context
+*)
 let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
   match t with
   | TInt | TBool -> ()
@@ -144,42 +144,55 @@ and typecheck_retty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
        declaration struct T { a:int; b:int; c:int } The expression new T {b=3; c=4;
        a=1} is well typed.  (You should sort the fields to compare them.)
 
-    *)
+*)
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
-  failwith "todo: implement typecheck_exp"
+  match e.elt with
+  | CNull rty ->
+      typecheck_ty e c (TRef rty);
+      TNullRef rty
+  | CBool _ -> TBool
+  | CInt _ -> TInt
+  | CStr _ -> TRef RString
+  | Id id -> typecheck_exp_id e c id
+  | _ -> failwith "fottiti"
+
+and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
+  match Tctxt.lookup_local_option id c with
+  | None -> lookup_global id c
+  | Some t -> t
 
 (* statements --------------------------------------------------------------- *)
 
 (* Typecheck a statement
-       This function should implement the statment typechecking rules from oat.pdf.
+           This function should implement the statment typechecking rules from oat.pdf.
 
-       Inputs:
+           Inputs:
        - tc: the type context
        - s: the statement node
        - to_ret: the desired return type (from the function declaration)
 
-       Returns:
+           Returns:
        - the new type context (which includes newly declared variables in scope
-           after this statement
+               after this statement
        - A boolean indicating the return behavior of a statement:
-            false:  might not return
-            true: definitely returns
+                false:  might not return
+                true: definitely returns
 
-            in the branching statements, both branches must definitely return
+                in the branching statements, both branches must definitely return
 
-            Intuitively: if one of the two branches of a conditional does not
-            contain a return statement, then the entier conditional statement might
-            not return.
+                Intuitively: if one of the two branches of a conditional does not
+                contain a return statement, then the entier conditional statement might
+                not return.
 
-            looping constructs never definitely return
+                looping constructs never definitely return
 
-       Uses the type_error function to indicate a (useful!) error message if the
-       statement is not type correct.  The exact wording of the error message is
-       not important, but the fact that the error is raised, is important.  (Our
-       tests also do not check the location information associated with the error.)
+           Uses the type_error function to indicate a (useful!) error message if the
+           statement is not type correct.  The exact wording of the error message is
+           not important, but the fact that the error is raised, is important.  (Our
+           tests also do not check the location information associated with the error.)
 
        - You will probably find it convenient to add a helper function that implements the
-         block typecheck rules.
+             block typecheck rules.
     *)
 let rec typecheck_stmt (tc : Tctxt.t) (s : Ast.stmt node) (to_ret : ret_ty) :
     Tctxt.t * bool =
@@ -187,7 +200,7 @@ let rec typecheck_stmt (tc : Tctxt.t) (s : Ast.stmt node) (to_ret : ret_ty) :
 
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
-       is needed elswhere in the type system.
+           is needed elswhere in the type system.
     *)
 
 (* Helper function to look for duplicate field names *)
@@ -203,7 +216,7 @@ let typecheck_tdecl (tc : Tctxt.t) id fs (l : 'a Ast.node) : unit =
 (* function declarations ---------------------------------------------------- *)
 (* typecheck a function declaration
        - extends the local context with the types of the formal parameters to the
-          function
+              function
        - typechecks the body of the function (passing in the expected return type
        - checks that the function actually returns
     *)
@@ -213,29 +226,29 @@ let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
 (* creating the typchecking context ----------------------------------------- *)
 
 (* The following functions correspond to the
-       judgments that create the global typechecking context.
+           judgments that create the global typechecking context.
 
-       create_struct_ctxt: - adds all the struct types to the struct 'S'
-       context (checking to see that there are no duplicate fields
+           create_struct_ctxt: - adds all the struct types to the struct 'S'
+           context (checking to see that there are no duplicate fields
 
-         H |-s prog ==> H'
-
-
-       create_function_ctxt: - adds the the function identifiers and their
-       types to the 'F' context (ensuring that there are no redeclared
-       function identifiers)
-
-         H ; G1 |-f prog ==> G2
+             H |-s prog ==> H'
 
 
-       create_global_ctxt: - typechecks the global initializers and adds
-       their identifiers to the 'G' global context
+           create_function_ctxt: - adds the the function identifiers and their
+           types to the 'F' context (ensuring that there are no redeclared
+           function identifiers)
 
-         H ; G1 |-g prog ==> G2
+             H ; G1 |-f prog ==> G2
 
 
-       NOTE: global initializers may mention function identifiers as
-       constants, but can't mention other global values *)
+           create_global_ctxt: - typechecks the global initializers and adds
+           their identifiers to the 'G' global context
+
+             H ; G1 |-g prog ==> G2
+
+
+           NOTE: global initializers may mention function identifiers as
+           constants, but can't mention other global values *)
 
 let create_struct_ctxt (p : Ast.prog) : Tctxt.t =
   failwith "todo: create_struct_ctxt"
@@ -247,7 +260,7 @@ let create_global_ctxt (tc : Tctxt.t) (p : Ast.prog) : Tctxt.t =
   failwith "todo: create_function_ctxt"
 
 (* This function implements the |- prog and the H ; G |- prog
-       rules of the oat.pdf specification.
+           rules of the oat.pdf specification.
     *)
 let typecheck_program (p : Ast.prog) : unit =
   let sc = create_struct_ctxt p in
