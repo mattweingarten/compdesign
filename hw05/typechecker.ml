@@ -154,7 +154,14 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   | CInt _ -> TInt
   | CStr _ -> TRef RString
   | Id id -> typecheck_exp_id e c id
-  | _ -> failwith "fottiti"
+  | CArr (t, es) ->
+      typecheck_ty e c t;
+      if
+        List.fold_left ( && ) true
+          (List.map (fun exp -> subtype c (typecheck_exp c exp) t) es)
+      then t
+      else type_error e "illegal array declaration"
+  | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
   match Tctxt.lookup_local_option id c with
