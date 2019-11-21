@@ -229,7 +229,59 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
      block typecheck rules.
 *)
 let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
-  failwith "todo: implement typecheck_stmt"
+
+  let type_ass (lhs:exp node) (rhs:exp node):  Tctxt.t * bool =
+    let t = typecheck_exp tc lhs in
+    let t' = typecheck_exp tc rhs in
+    if (subtype tc t' t = false) then type_error s ((string_of_ty t') ^ " not subtype of: " ^ (string_of_ty t));
+
+    begin match lhs.elt with
+      | Id id -> begin match lookup_global_option id tc with
+                    | Some gt -> begin match gt with
+                      | TRef(RFun _) ->  type_error s (id ^ " already defined as function") | _ -> () end
+                    | None -> ()
+                 end
+      | _ -> ()
+    end;
+    let nc = begin match lhs.elt with
+      | Id id -> add_local tc id t
+      | _ -> tc
+    end in
+    (nc,false)
+  in
+
+
+  let type_decl (id:Ast.id) (e:exp node):  Tctxt.t * bool =
+    begin match lookup_local_option id tc with
+      | Some _ -> type_error s (id ^ " already defined as local variable")
+      | None -> ()
+    end;
+    let t = typecheck_exp tc e in
+    ((add_local tc id t),false)
+  in
+
+  let type_scall (fname:exp node) (args: exp node list) :Tctxt.t * bool=
+    let id = match fname.elt with | Id id -> id | _ -> type_error s ("Invalid function name") in
+    let args_t' = List.map (fun e -> typecheck_exp tc e) args in
+    let args_t,return = match typecheck_exp tc fname with
+    | TRef(RFun(args,ret)) -> (args,ret) | _ -> type_error s (id ^  " not a function") in
+    if (return != RetVoid) then type_error s ("function " ^ id ^  " does not return void");
+    let bools = try List.map2(fun t' t -> subtype tc t' t) args_t' args_t with
+    | Invalid_argument _ -> type_error s ("function " ^ id ^ " has invalid input types") in
+    (tc, List.for_all (fun b -> b) bools)
+  in
+
+
+  begin match s.elt with
+    | Assn (lhs,rhs) -> type_ass lhs rhs
+    | Decl  (id, e) -> type_decl id e
+    | Ret exp -> failwith "unimplemented"
+    | SCall (fname,args) -> type_scall fname args
+    | If (cond, ifb, elseb) -> failwith "unimplemented"
+    | Cast _ -> failwith "unimplemented"
+    | For (vdecls, eo, so, body) -> failwith "unimplemented"
+    | While (cond, body) -> failwith "unimplemented"
+  end
 
 
 
