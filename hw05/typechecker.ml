@@ -221,10 +221,24 @@ and typecheck_stmt_ass (tc : Tctxt.t) (lhs : Ast.exp node) (e : Ast.exp node) :
   let ass_t = typecheck_exp tc e in
   if subtype tc ass_t lhs_t then tc else type_error e @@ "wrong assignment type"
 
+and typecheck_stmt_scall (tc : Tctxt.t) (f : Ast.exp node)
+    (args : Ast.exp node list) : Tctxt.t =
+  let f_ty =
+    match typecheck_exp tc f with
+    | TRef (RFun (ts, RetVoid)) -> ts
+    | _ -> type_error f "return type not void"
+  in
+  let args_ty = List.map (typecheck_exp tc) args in
+  let subtys =
+    List.map (fun (t1, t2) -> subtype tc t1 t2) (List.combine args_ty f_ty)
+  in
+  if List.fold_left ( && ) true subtys then tc
+  else type_error f "arguments type mismatch"
+
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
-             is needed elswhere in the type system.
-*)
+               is needed elswhere in the type system.
+  *)
 
 (* Helper function to look for duplicate field names *)
 let rec check_dups fs =
