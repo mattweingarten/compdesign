@@ -203,12 +203,25 @@ and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
 *)
 let rec typecheck_stmt (tc : Tctxt.t) (s : Ast.stmt node) (to_ret : ret_ty) :
     Tctxt.t * bool =
-  failwith "todo: implement typecheck_stmt"
+  match s.elt with
+  | Assn (lhs, e) -> (typecheck_stmt_assn tc lhs e, false)
+  | _ -> failwith "not implemented"
+
+and typecheck_stmt_assn (tc : Tctxt.t) (lhs : Ast.exp node) (e : Ast.exp node) :
+    Tctxt.t =
+  let id = match lhs.elt with Id id -> id | _ -> type_error lhs "not id" in
+  ( match lookup_global_option id tc with
+  | None -> ()
+  | _ -> type_error lhs @@ id ^ "already defined as global" );
+  let lhs_t = typecheck_exp tc lhs in
+  let assn_t = typecheck_exp tc e in
+  if subtype tc assn_t lhs_t then tc
+  else type_error e @@ "wrong assignment type for " ^ id
 
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
-           is needed elswhere in the type system.
-*)
+             is needed elswhere in the type system.
+  *)
 
 (* Helper function to look for duplicate field names *)
 let rec check_dups fs =
