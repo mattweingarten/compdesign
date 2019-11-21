@@ -174,14 +174,14 @@ and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
            This function should implement the statment typechecking rules from oat.pdf.
 
            Inputs:
-       - tc: the type context
-       - s: the statement node
-       - to_ret: the desired return type (from the function declaration)
+   - tc: the type context
+   - s: the statement node
+   - to_ret: the desired return type (from the function declaration)
 
            Returns:
-       - the new type context (which includes newly declared variables in scope
+   - the new type context (which includes newly declared variables in scope
                after this statement
-       - A boolean indicating the return behavior of a statement:
+   - A boolean indicating the return behavior of a statement:
                 false:  might not return
                 true: definitely returns
 
@@ -198,9 +198,9 @@ and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
            not important, but the fact that the error is raised, is important.  (Our
            tests also do not check the location information associated with the error.)
 
-       - You will probably find it convenient to add a helper function that implements the
+   - You will probably find it convenient to add a helper function that implements the
              block typecheck rules.
-    *)
+*)
 let rec typecheck_stmt (tc : Tctxt.t) (s : Ast.stmt node) (to_ret : ret_ty) :
     Tctxt.t * bool =
   failwith "todo: implement typecheck_stmt"
@@ -208,7 +208,7 @@ let rec typecheck_stmt (tc : Tctxt.t) (s : Ast.stmt node) (to_ret : ret_ty) :
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
            is needed elswhere in the type system.
-    *)
+*)
 
 (* Helper function to look for duplicate field names *)
 let rec check_dups fs =
@@ -222,13 +222,34 @@ let typecheck_tdecl (tc : Tctxt.t) id fs (l : 'a Ast.node) : unit =
 
 (* function declarations ---------------------------------------------------- *)
 (* typecheck a function declaration
-       - extends the local context with the types of the formal parameters to the
+   - extends the local context with the types of the formal parameters to the
               function
-       - typechecks the body of the function (passing in the expected return type
-       - checks that the function actually returns
-    *)
+   - typechecks the body of the function (passing in the expected return type
+   - checks that the function actually returns
+*)
+let typecheck_block (tc : Tctxt.t) (b : Ast.block) (retty : Ast.ret_ty)
+    (nod : 'a Ast.node) =
+  let rec recurse l stmts =
+    match stmts with
+    | [] -> type_error nod @@ "empty block"
+    | [ s ] -> (
+        match typecheck_stmt l s retty with
+        | l1, true -> (l1, true)
+        | _ -> type_error nod @@ "no return in function body" )
+    | s :: sts -> (
+        match typecheck_stmt l s retty with
+        | l1, false -> recurse l1 sts
+        | _ -> type_error nod @@ "invalid body" )
+  in
+
+  recurse tc b
+
 let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
-  failwith "todo: typecheck_fdecl"
+  let lc = List.fold_left (fun c (t, id) -> add_local c id t) tc f.args in
+  if check_dups (List.map (fun (t, id) -> { fieldName = id; ftyp = t }) f.args)
+  then type_error l @@ "duplicate args in fdecl " ^ f.fname
+  else if snd (typecheck_block lc f.body f.frtyp l) = false then
+    type_error l @@ "block does not return"
 
 (* creating the typchecking context ----------------------------------------- *)
 
@@ -258,17 +279,58 @@ let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
            constants, but can't mention other global values *)
 
 let create_struct_ctxt (p : Ast.prog) : Tctxt.t =
-  failwith "todo: create_struct_ctxt"
+  let add_no_dup c id fs =
+    match lookup_struct_option id c with
+    | None -> add_struct c id fs
+    | _ -> type_error (no_loc p) @@ "duplicate struct " ^ id
+  in
+  let rec build h prog =
+    match prog with
+    | [] -> h
+    | Gtdecl { elt = id, fs } :: ps -> build (add_no_dup h id fs) ps
+    | _ :: ps -> build h ps
+  in
+  build empty p
 
 let create_function_ctxt (tc : Tctxt.t) (p : Ast.prog) : Tctxt.t =
-  failwith "todo: create_function_ctxt"
+  let typ_ftyp ars retty =
+    List.iter (fun (t, _) -> typecheck_ty (no_loc p) tc t) ars;
+    typecheck_retty (no_loc p) tc retty
+  in
+  let add_no_dup c id glob =
+    match lookup_global_option id c with
+    | None -> add_global c id glob
+    | _ -> type_error (no_loc p) @@ "duplicate function name " ^ id
+  in
+  let rec build g prog =
+    match prog with
+    | [] -> g
+    | Gfdecl { elt = { frtyp = ret_ty; fname = id; args; body = block } } :: ps
+      ->
+        typ_ftyp args ret_ty;
+        build (add_no_dup g id (TRef (RFun (List.map fst args, ret_ty)))) ps
+    | _ :: ps -> build g ps
+  in
+  build tc p
 
 let create_global_ctxt (tc : Tctxt.t) (p : Ast.prog) : Tctxt.t =
-  failwith "todo: create_function_ctxt"
+  let add_no_dup c id t =
+    match lookup_global_option id c with
+    | None -> add_global c id t
+    | _ -> type_error (no_loc p) @@ "duplicate global " ^ id
+  in
+  let rec build g prog =
+    match prog with
+    | [] -> g
+    | Gvdecl { elt = { name = id; init = e } } :: ps ->
+        build (add_no_dup g id (typecheck_exp g e)) ps
+    | _ :: ps -> build g ps
+  in
+  build tc p
 
 (* This function implements the |- prog and the H ; G |- prog
            rules of the oat.pdf specification.
-    *)
+*)
 let typecheck_program (p : Ast.prog) : unit =
   let sc = create_struct_ctxt p in
   let fc = create_function_ctxt sc p in
