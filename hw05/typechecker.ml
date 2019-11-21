@@ -205,6 +205,7 @@ let rec typecheck_stmt (tc : Tctxt.t) (s : Ast.stmt node) (to_ret : ret_ty) :
     Tctxt.t * bool =
   match s.elt with
   | Assn (lhs, e) -> (typecheck_stmt_ass tc lhs e, false)
+  | Decl (id, e) -> (add_local tc id (typecheck_exp tc e), false)
   | _ -> failwith "not implemented"
 
 and typecheck_stmt_ass (tc : Tctxt.t) (lhs : Ast.exp node) (e : Ast.exp node) :
