@@ -204,10 +204,10 @@ and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
 let rec typecheck_stmt (tc : Tctxt.t) (s : Ast.stmt node) (to_ret : ret_ty) :
     Tctxt.t * bool =
   match s.elt with
-  | Assn (lhs, e) -> (typecheck_stmt_assn tc lhs e, false)
+  | Assn (lhs, e) -> (typecheck_stmt_ass tc lhs e, false)
   | _ -> failwith "not implemented"
 
-and typecheck_stmt_assn (tc : Tctxt.t) (lhs : Ast.exp node) (e : Ast.exp node) :
+and typecheck_stmt_ass (tc : Tctxt.t) (lhs : Ast.exp node) (e : Ast.exp node) :
     Tctxt.t =
   ( match lhs.elt with
   | Id id -> (
@@ -217,9 +217,8 @@ and typecheck_stmt_assn (tc : Tctxt.t) (lhs : Ast.exp node) (e : Ast.exp node) :
       | _ -> () )
   | _ -> () );
   let lhs_t = typecheck_exp tc lhs in
-  let assn_t = typecheck_exp tc e in
-  if subtype tc assn_t lhs_t then tc
-  else type_error e @@ "wrong assignment type"
+  let ass_t = typecheck_exp tc e in
+  if subtype tc ass_t lhs_t then tc else type_error e @@ "wrong assignment type"
 
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
