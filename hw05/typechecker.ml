@@ -232,6 +232,16 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
   failwith "todo: implement typecheck_stmt"
 
 
+
+
+let rec typecheck_block (tc: Tctxt.t) (block:Ast.block) (to_ret:ret_ty) :Tctxt.t * bool =
+  begin match block with
+    | h::[] -> typecheck_stmt tc h to_ret
+    | h::t -> let c,b = typecheck_stmt tc h to_ret in if b
+              then type_error h ("Invalid return") else typecheck_block c t to_ret
+    | [] -> type_error (Ast.no_loc "") ("empty block")
+  end
+
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
    is needed elswhere in the type system.
@@ -255,8 +265,19 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
     - typechecks the body of the function (passing in the expected return type
     - checks that the function actually returns
 *)
+let rec check_dups_params args =
+  match args with
+    | [] -> false
+    | h::t -> (List.exists (fun x -> h = x ) t) || check_dups_params t
+
+
+
 let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
-  failwith "todo: typecheck_fdecl"
+ if (check_dups_params (snd @@ List.split @@ f.args))
+ then type_error l ("repeated paramater names in in " ^ f.fname)
+ else let new_ctxt = List.fold_left(fun c (t,id) -> add_local c id t ) tc f.args in
+ let block_ret = snd @@ typecheck_block new_ctxt (f.body) (f.frtyp) in
+ if (block_ret = false) then type_error l ("block does not return" ^ f.fname)
 
 (* creating the typchecking context ----------------------------------------- *)
 
@@ -294,7 +315,7 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
           | Some _ -> fun c -> c
           | None -> fun c -> add_struct c id fs;
         end
-      | _ -> fun c -> c ) p c
+      | _ -> fun c -> c ) (List.rev p) c
 
 
 
@@ -312,7 +333,7 @@ let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
           | None -> fun c -> check_function_type arg_types ret_ty;add_global c id (TRef(RFun(arg_types, ret_ty)))
         end
       | _ -> fun c -> c
-    ) p tc
+    ) (List.rev p) tc
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   List.fold_right (fun decl ->
@@ -323,7 +344,7 @@ let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
             | None -> fun c -> add_global c id (typecheck_exp c exp)
           end
         | _ -> fun c -> c
-    ) p tc
+    ) (List.rev p) tc
 
 
 (* This function implements the |- prog and the H ; G |- prog
