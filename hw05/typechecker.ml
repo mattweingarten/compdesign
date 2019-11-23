@@ -161,6 +161,14 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
           (List.map (fun exp -> subtype c (typecheck_exp c exp) t) es)
       then t
       else type_error e "illegal array declaration"
+  | NewArr (t, e1, x, e2) ->
+      typecheck_ty e c t;
+      if typecheck_exp c e1 != TInt then type_error e "array size not int";
+      if lookup_local_option x c != None then
+        type_error e @@ x ^ " already defined";
+      let e2_ty = typecheck_exp (add_local c x TInt) e2 in
+      if subtype c e2_ty t then e2_ty
+      else type_error e "invalid array definition"
   | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
