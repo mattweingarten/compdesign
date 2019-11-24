@@ -169,6 +169,13 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
       let e2_ty = typecheck_exp (add_local c x TInt) e2 in
       if subtype c e2_ty t then e2_ty
       else type_error e "invalid array definition"
+  | Index (e1, e2) ->
+      let arr_ty =
+        match typecheck_exp c e1 with
+        | TRef (RArray t) -> t
+        | _ -> type_error e "not array type"
+      in
+      if typecheck_exp c e2 = TInt then arr_ty else type_error e "invalid index"
   | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
