@@ -145,6 +145,16 @@ and typecheck_retty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
        a=1} is well typed.  (You should sort the fields to compare them.)
 
 *)
+let struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
+  let s1 = List.sort (fun (id1, _) (id2, _) -> compare id1 id2) fs1 in
+  let s2 =
+    List.sort
+      (fun { fieldName = id1 } { fieldName = id2 } -> compare id1 id2)
+      fs2
+  in
+  let subtys = List.map2 (fun (_, t1) { ftyp = t2 } -> subtype c t1 t2) s1 s2 in
+  List.fold_left ( && ) true subtys
+
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   match e.elt with
   | CNull rty ->
@@ -176,6 +186,23 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
         | _ -> type_error e "not array type"
       in
       if typecheck_exp c e2 = TInt then arr_ty else type_error e "invalid index"
+  | Length arr -> (
+      match typecheck_exp c arr with
+      | TRef (RArray t) -> TInt
+      | _ -> type_error e "not array, cannot get length" )
+  | CStruct (id, fs) ->
+      let struc =
+        match lookup_struct_option id c with
+        | None -> type_error e @@ "undefined struct " ^ id
+        | Some fs -> fs
+      in
+      if
+        struct_subtypes c
+          (List.map (fun (id, exp) -> (id, typecheck_exp c exp)) fs)
+          struc
+        = false
+      then type_error e "invalid struct fields";
+      TRef (RStruct id)
   | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
@@ -253,7 +280,7 @@ and typecheck_stmt_scall (tc : Tctxt.t) (f : Ast.exp node)
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
                is needed elswhere in the type system.
-  *)
+*)
 
 (* Helper function to look for duplicate field names *)
 let rec check_dups fs =
