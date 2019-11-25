@@ -81,7 +81,7 @@ and subtype_struct_fields (c : Tctxt.t) (fs1 : Ast.field list)
     (fs2 : Ast.field list) : bool =
   match (fs1, fs2) with
   | _, [] -> true
-  | [], _ -> false
+  | [], f :: fs -> false
   | ( { fieldName = id1; ftyp = ty1 } :: fs1',
       { fieldName = id2; ftyp = ty2 } :: fs2' ) ->
       id1 = id2 && ty1 = ty2 && subtype_struct_fields c fs1' fs2'
