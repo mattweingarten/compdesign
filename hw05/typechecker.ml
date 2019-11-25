@@ -145,7 +145,7 @@ and typecheck_retty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
        a=1} is well typed.  (You should sort the fields to compare them.)
 
 *)
-let struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
+let check_struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
   let s1 = List.sort (fun (id1, _) (id2, _) -> compare id1 id2) fs1 in
   let s2 =
     List.sort
@@ -154,6 +154,10 @@ let struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
   in
   let subtys = List.map2 (fun (_, t1) { ftyp = t2 } -> subtype c t1 t2) s1 s2 in
   List.fold_left ( && ) true subtys
+
+let check_subtypes c tys1 tys2 : bool =
+  List.fold_left ( && ) true
+    (List.map2 (fun ty1 ty2 -> subtype c ty1 ty2) tys1 tys2)
 
 let rec find_fields fs id =
   match fs with
@@ -203,7 +207,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
         | Some fs -> fs
       in
       if
-        struct_subtypes c
+        check_struct_subtypes c
           (List.map (fun (id, exp) -> (id, typecheck_exp c exp)) fs)
           struc
         = false
@@ -223,6 +227,15 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
       try find_fields s_fs id
       with Not_found ->
         type_error e @@ "field " ^ id ^ " not defined for struct" )
+  | Call (f, args) ->
+      let f_args, f_ret =
+        match typecheck_exp c f with
+        | TRef (RFun (args, RetVal retty)) -> (args, retty)
+        | _ -> type_error e "not function"
+      in
+      let args_tys = List.map (fun e -> typecheck_exp c e) args in
+      if check_subtypes c args_tys f_args then f_ret
+      else type_error e "invalid argument types"
   | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
