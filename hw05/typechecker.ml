@@ -73,7 +73,7 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
 
   let subtype_struc  (id1:Ast.id) (id2:Ast.id) : bool =
    begin match (lookup_struct_option id1 c,lookup_struct_option id2 c) with
-    | (Some f1, Some f2) -> compare_fields f1 f2
+    | (Some f1, Some f2) -> compare_fields (List.sort(fun f -> compare f)f1) (List.sort(fun f -> compare f)f2)
     | _ -> false
    end
   in
@@ -160,7 +160,7 @@ and typecheck_ret (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
    a=1} is well typed.  (You should sort the fields to compare them.)
 
 *)
-let check_struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
+(* let check_struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
   let s1 = List.sort (fun (id1, _) (id2, _) -> compare id1 id2) fs1 in
   let s2 =
     List.sort
@@ -270,11 +270,11 @@ let rec find_fields fs id =
   and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
     match Tctxt.lookup_local_option id c with
     | None -> lookup_global id c
-    | Some t -> t
+    | Some t -> t *)
 
 
 
-(* let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
+let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   let error = TypeError("Type mismatch in expression: " ^ (string_of_exp e) ^
                         " at location" ^ (Range.string_of_range e.loc)) in
 
@@ -307,7 +307,7 @@ let rec find_fields fs id =
     | Bop (op, e1, e2) ->typecheck_binop op e1 e2
     | Uop (op, e) -> typecheck_unop op e
     (* | _ -> failwith "unimplemented" *)
-  end *)
+  end
 
 (* statements --------------------------------------------------------------- *)
 
@@ -412,8 +412,6 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
 
 
   let type_ret (exp:exp node option) :Tctxt.t * bool =
-
-
     begin match to_ret with
       | RetVoid -> begin match exp with | None -> (tc,true) | Some _  -> type_error s ("Function expects return void") end
       | RetVal ret_t ->
