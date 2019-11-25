@@ -155,6 +155,12 @@ let struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
   let subtys = List.map2 (fun (_, t1) { ftyp = t2 } -> subtype c t1 t2) s1 s2 in
   List.fold_left ( && ) true subtys
 
+let rec find_fields fs id =
+  match fs with
+  | { fieldName = name; ftyp = t } :: fs' ->
+      if id = name then t else find_fields fs' id
+  | [] -> raise Not_found
+
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   match e.elt with
   | CNull rty ->
@@ -203,6 +209,20 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
         = false
       then type_error e "invalid struct fields";
       TRef (RStruct id)
+  | Proj (exp, id) -> (
+      let s_id =
+        match typecheck_exp c exp with
+        | TRef (RStruct id) -> id
+        | _ -> type_error e "not a struct"
+      in
+      let s_fs =
+        match lookup_struct_option id c with
+        | Some fs -> fs
+        | _ -> type_error e "undefined struct"
+      in
+      try find_fields s_fs id
+      with Not_found ->
+        type_error e @@ "field " ^ id ^ " not defined for struct" )
   | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
