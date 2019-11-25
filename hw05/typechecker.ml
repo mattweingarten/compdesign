@@ -236,6 +236,21 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
       let args_tys = List.map (fun e -> typecheck_exp c e) args in
       if check_subtypes c args_tys f_args then f_ret
       else type_error e "invalid argument types"
+  | Bop (Eq, e1, e2) | Bop (Neq, e1, e2) ->
+      let e1_ty = typecheck_exp c e1 in
+      let e2_ty = typecheck_exp c e2 in
+      if subtype c e1_ty e2_ty && subtype c e2_ty e1_ty then TBool
+      else type_error e "invalid comparison types"
+  | Bop (bop, e1, e2) ->
+      let e1_ty = typecheck_exp c e1 in
+      let e2_ty = typecheck_exp c e2 in
+      let t1, t2, final = typ_of_binop bop in
+      if e1_ty = t1 && e2_ty = t2 then final
+      else type_error e "invalid bop types"
+  | Uop (uop, exp) ->
+      let u_ty = typ_of_unop uop in
+      let e_ty = typecheck_exp c exp in
+      if e_ty = fst u_ty then snd u_ty else type_error e "illegal uop type"
   | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
