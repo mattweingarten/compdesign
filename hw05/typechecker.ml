@@ -74,8 +74,17 @@ and subtype_struct (c : Tctxt.t) (id1 : Ast.id) (id2 : Ast.id) : bool =
   match
     (Tctxt.lookup_struct_option id1 c, Tctxt.lookup_struct_option id2 c)
   with
-  | Some a, Some b -> true
+  | Some a, Some b -> subtype_struct_fields c a b
   | _ -> false
+
+and subtype_struct_fields (c : Tctxt.t) (fs1 : Ast.field list)
+    (fs2 : Ast.field list) : bool =
+  match (fs1, fs2) with
+  | _, [] -> true
+  | [], _ -> false
+  | ( { fieldName = id1; ftyp = ty1 } :: fs1',
+      { fieldName = id2; ftyp = ty2 } :: fs2' ) ->
+      id1 = id2 && ty1 = ty2 && subtype_struct_fields c fs1' fs2'
 
 and subtype_ret (c : Tctxt.t) (t1 : Ast.ret_ty) (t2 : Ast.ret_ty) : bool =
   match (t1, t2) with
@@ -251,7 +260,6 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
       let u_ty = typ_of_unop uop in
       let e_ty = typecheck_exp c exp in
       if e_ty = fst u_ty then snd u_ty else type_error e "illegal uop type"
-  | _ -> failwith "todo"
 
 and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
   match Tctxt.lookup_local_option id c with
