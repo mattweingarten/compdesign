@@ -303,11 +303,15 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
   *)
   | Ast.Length e ->
       let arr_ty, arr_op, arr_code = cmp_exp tc c e in
-      let len_id = gensym "len" in
+      let gep_id, len_id = (gensym "gep", gensym "len") in
       ( I64,
         Id len_id,
         arr_code
-        >@ lift [ (len_id, Gep (arr_ty, arr_op, [ Const 0L; Const 0L ])) ] )
+        >@ lift
+             [
+               (gep_id, Gep (arr_ty, arr_op, [ Const 0L; Const 0L ]));
+               (len_id, Load (I64, Id gep_id));
+             ] )
   | Ast.Index (e, i) ->
       let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
       let ans_id = gensym "index" in
@@ -402,7 +406,14 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
 
      You will find the TypeCtxt.lookup_field_name function helpfule.
   *)
-  | Ast.Proj (e, i) -> failwith "todo: Ast.Proj case of cmp_exp_lhs"
+  | Ast.Proj (e, i) ->
+      let s_ty, s_op, s_code = cmp_exp tc c e in
+      let f_ty, ind = TypeCtxt.lookup_field_name i tc in
+      let ptr = Ptr (cmp_ty tc f_ty) in
+      let p_id = gensym "proj" in
+      ( ptr,
+        Id p_id,
+        s_code >@ lift [ (p_id, Gep (s_ty, s_op, [ Const 0L; Const ind ])) ] )
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the
      GEP calculation. This should be very straightforward, except that you'll need to use a Bitcast.
      You might want to take a look at the implementation of 'oat_assert_array_length'
@@ -654,7 +665,19 @@ let rec cmp_gexp c (tc : TypeCtxt.t) (e : Ast.exp node) :
       in
       ((Ptr arr_t, GGid gid), (gid, (arr_t, arr_i)) :: gs)
   (* STRUCT TASK: Complete this code that generates the global initializers for a struct value. *)
-  | CStruct (id, cs) -> failwith "todo: Cstruct case of cmp_gexp"
+  | CStruct (id, cs) ->
+      let elts, gs =
+        List.fold_right
+          (fun (i, cst) (elts, gs) ->
+            let gd, gs' = cmp_gexp c tc cst in
+            (gd :: elts, gs' @ gs))
+          cs ([], [])
+      in
+      let struc_tys = TypeCtxt.lookup id tc in
+      let cmpd_tys = List.map (fun { ftyp = t } -> cmp_ty tc t) struc_tys in
+      let struc_ty = Struct cmpd_tys in
+      let struc_i = GStruct elts in
+      ((Ptr struc_ty, GGid id), (id, (struc_ty, struc_i)) :: gs)
   | _ -> failwith "bad global initializer"
 
 (* Oat internals function context ------------------------------------------- *)
