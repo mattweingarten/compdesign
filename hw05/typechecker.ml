@@ -79,7 +79,9 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
   in
 
   let subtype_fun ((args1:ty list), (ret1:ret_ty)) ((args2:ty list), (ret2:ret_ty)) :bool =
-    List.for_all (fun (a1,a2) -> subtype c a1 a2) (List.combine args1 args2)
+    let combined = try List.combine args1 args2 with Invalid_argument _ -> [(TBool,TInt)]  in
+    (*This is just so it returns false if args different size instead of error*)
+    List.for_all (fun (a1,a2) -> subtype c a1 a2) combined
     && (sub_rt_type c ret1 ret2)
   in
 
@@ -643,7 +645,20 @@ let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   List.fold_right (fun decl ->
       match decl with
         | Gvdecl {elt={name=id;init=exp}} ->
+
           fun c ->
+            (* TODO: error_global fptr scope*)
+            begin match exp.elt with
+              | Id id2 -> begin match lookup_global_option id2 c with
+                            | Some _ ->
+                              begin match lookup_global_option id2 tc with
+                                | None -> type_error (no_loc "") ("cant assign global variable: " ^ id ^ " to another global variable: " ^ id2 )
+                                | Some _ -> ()
+                              end
+                            | None -> ()
+                          end
+              | _ -> ()
+            end;
             begin match lookup_global_option id c with
               | Some _ -> type_error (no_loc "") (id ^ " global variable already declared(double decleration)")
               | None -> add_global c id (typecheck_exp c exp)

@@ -3,6 +3,7 @@ struct B {int x; int y}
 
 void f(){
   var b = new B {y=1; x=2};
+  b = new A {x=2};
   return 0;
 }
 
