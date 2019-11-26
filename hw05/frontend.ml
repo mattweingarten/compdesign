@@ -206,7 +206,23 @@ let oat_alloc_array ct (t : Ast.ty) (size : Ll.operand) :
    - make sure to calculate the correct amount of space to allocate!
 *)
 let oat_alloc_struct ct (id : Ast.id) : Ll.ty * operand * stream =
-  failwith "TODO: oat_alloc_struct"
+  let ans_id, struc_id = (gensym "struct", gensym "raw_struct") in
+  let ans_ty = cmp_ty ct @@ TRef (RStruct id) in
+  let struc_ty = Ptr I64 in
+  let look = TypeCtxt.lookup id ct in
+  let size =
+    Const
+      (List.fold_left
+         (fun acc { ftyp = fty } -> Int64.add acc (size_oat_ty fty))
+         0L look)
+  in
+  ( ans_ty,
+    Id ans_id,
+    lift
+      [
+        (struc_id, Call (struc_ty, Gid "oat_malloc", [ (I64, size) ]));
+        (ans_id, Bitcast (struc_ty, Id struc_id, ans_ty));
+      ] )
 
 let str_arr_ty s = Array (1 + String.length s, I8)
 
