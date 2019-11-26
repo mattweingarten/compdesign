@@ -1,0 +1,12 @@
+struct A {int x}
+struct B {int x; int y}
+
+void f(){
+  var b = new B {y=1; x=2};
+  return 0;
+}
+
+int main (string[] args){
+  f();
+  return 0;
+}
