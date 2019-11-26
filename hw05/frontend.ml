@@ -330,7 +330,18 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
   | Ast.NewArr (elt_ty, e1, id, e2) ->
       let _, size_op, size_code = cmp_exp tc c e1 in
       let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-      (arr_ty, arr_op, size_code >@ alloc_code)
+      let i_id = gensym "i" in
+      let i = no_loc (Id i_id) in
+      let loop =
+        no_loc
+          (For
+             ( [ (i_id, no_loc (CInt 0L)) ],
+               Some (no_loc (Bop (Lt, i, e1))),
+               Some (no_loc (Assn (i, no_loc (Bop (Add, i, no_loc (CInt 1L)))))),
+               [ no_loc (Assn (no_loc (Index (no_loc (Id id), i)), e2)) ] ))
+      in
+      let loop_ctxt, loop_code = cmp_stmt tc c arr_ty loop in
+      (arr_ty, arr_op, size_code >@ alloc_code >@ loop_code)
   (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
        - use the TypeCtxt operations to compute getelementptr indices
@@ -365,7 +376,7 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
   *)
   | Ast.Index (e, i) ->
       let arr_ty, arr_op, arr_code = cmp_exp tc c e in
-      let _, ind_op, ind_code = cmp_exp tc c i in
+      let ind_ty, ind_op, ind_code = cmp_exp tc c i in
       let ans_ty =
         match arr_ty with
         | Ptr (Struct [ _; Array (_, t) ]) -> t
@@ -377,6 +388,12 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
         arr_code >@ ind_code
         >@ lift
              [
+               (tmp_id, Bitcast (arr_ty, arr_op, Ptr I64));
+               ( gensym "assert",
+                 Call
+                   ( Void,
+                     Gid "oat_assert_array_length",
+                     [ (Ptr I64, Id tmp_id); (ind_ty, ind_op) ] ) );
                ( ptr_id,
                  Gep
                    (arr_ty, arr_op, [ i64_op_of_int 0; i64_op_of_int 1; ind_op ])
