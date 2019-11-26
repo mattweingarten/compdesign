@@ -364,7 +364,26 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
        - compile the initializer expression
        - store the resulting value into the structure
    *)
-  | Ast.CStruct (id, l) -> failwith "TODO: Ast.CStruct"
+  | Ast.CStruct (id, l) ->
+      let s_ty, s_op = Ctxt.lookup id c in
+      let fs_code =
+        List.fold_right
+          (fun (f_id, f_e) acc ->
+            let i = TypeCtxt.index_of_field id f_id tc in
+            let gep_id, init_id, res_id =
+              (gensym "gep", gensym "field", gensym "res")
+            in
+            let i_ty, i_op, i_code = cmp_exp tc c f_e in
+            let gep_code =
+              [
+                (gep_id, Gep (i_ty, i_op, [ Const 0L; Const (Int64.of_int i) ]));
+              ]
+            in
+            let store_code = [ (res_id, Store (i_ty, i_op, Id gep_id)) ] in
+            (lift gep_code >@ i_code >@ lift store_code) :: acc)
+          l []
+      in
+      (s_ty, s_op, List.flatten fs_code)
   | Ast.Proj (e, id) ->
       let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
       let ans_id = gensym "proj" in
