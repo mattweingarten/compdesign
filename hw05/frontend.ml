@@ -350,10 +350,8 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
   | Ast.NewArr (elt_ty, e1, id, e2) ->
       let size_ty, size_op, size_code = cmp_exp tc c e1 in
       let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-      let arr_id = gensym "newarr" in
+      let arr_id = gensym "ptarr" in
       let arr_exp = no_loc (Id arr_id) in
-      let i_id = gensym "i" in
-      let i = no_loc (Id i_id) in
       let id_nod = no_loc (Id id) in
       let for_exp = Some (no_loc (Bop (Lt, id_nod, e1))) in
       let for_stmt =
@@ -366,14 +364,15 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
       let ast_loop =
         For ([ (id, no_loc (CInt 0L)) ], for_exp, for_stmt, for_stmts)
       in
-
-      Printf.printf "%s\n" (Llutil.string_of_ty arr_ty);
-      (* Printf.printf "%s\n" (Llutil.string_of_operand arr_op);
-      Astlib.print_exp arr_exp;
-      *)
-      let new_c = Ctxt.add c arr_id (Ptr arr_ty, arr_op) in
+      let new_c = Ctxt.add c arr_id (Ptr arr_ty, Id arr_id) in
       let loop_c, loop_code = cmp_stmt tc new_c Void (no_loc ast_loop) in
-      (arr_ty, arr_op, alloc_code >@ loop_code)
+      ( arr_ty,
+        arr_op,
+        []
+        >:: E (arr_id, Alloca arr_ty)
+        >@ alloc_code
+        >:: I (gensym "s", Store (arr_ty, arr_op, Id arr_id))
+        >@ loop_code )
   (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
      - use the TypeCtxt operations to compute getelementptr indices
@@ -433,7 +432,6 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
   | Ast.Index (e, i) ->
       let arr_ty, arr_op, arr_code = cmp_exp tc c e in
       let ind_ty, ind_op, ind_code = cmp_exp tc c i in
-      Printf.printf "%s\n" (Llutil.string_of_ty arr_ty);
       let ans_ty =
         match arr_ty with
         | Ptr (Struct [ _; Array (_, t) ]) -> t
@@ -531,7 +529,6 @@ and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
   | Ast.Cast (typ, id, exp, notnull, null) ->
       let e_ty, e_op, e_code = cmp_exp tc c exp in
       let new_c = Ctxt.add c id (Ptr e_ty, e_op) in
-      Printf.printf "here %s\n" (Llutil.string_of_ty e_ty);
       let nn_code = cmp_block tc new_c rt notnull in
       let null_code = cmp_block tc c rt null in
       let eq_id, null_i, notnull_i, merge_i =
