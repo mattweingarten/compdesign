@@ -1,0 +1,63 @@
+/* 17921537, Matthew Weingarten  */
+/* 16923229, Simon Rodoni  */
+
+/* Implements triangle class on 2-d plane, supports translation, rotation */
+/* and any arbitrary function on each point */
+
+struct Point {int x; int y}
+struct Triangle {Point a; Point b; Point c}
+
+Point add (Point p, int x, int y) {
+  var new_p = new Point { x  = p.x + x; y = p.y + y};
+  return new_p;
+}
+
+Point rotate_point_90(Point p) {
+  var new_p  = new Point {x = p.y; y = -(p.x)};
+  return new_p;
+}
+
+Point multiply(Point p, int amount){
+  var new_p = new Point {x = amount * (p.x);y = amount * (p.y)};
+  return new_p;
+}
+
+Point square(Point p){
+  var new_p = new Point { x = p.x * p.x; y = p.y * p.y};
+  return new_p;
+}
+
+Triangle apply_function((Point) -> Point f, Triangle t){
+  var new_t = new Triangle { a = f(t.a); b = f(t.b); z = f(t.c)};
+  return new_t;
+}
+
+Triangle shift(Triangle t, int x, int y ){
+  var new_t = new Triangle { a = add(t.a, x, y);b = add(t.b, x, y);c = add(t.c, x, y)};
+  return new_t;
+}
+
+
+Triangle rotate_90(Triangle t) {
+  var new_t = new Triangle{ a = rotate_point_90(t.a);  b = rotate_point_90(t.b); c = rotate_point_90(t.c)};
+  return new_t;
+}
+
+Triangle scale(Triangle t, int amount) {
+  var new_t = new Triangle { a = multiply(t.a , amount); b = multiply(t.b, amount); c = multiply(t.c, amount)};
+  return new_t;
+}
+
+
+
+
+int program(int argc, string[] argv) {
+  var p1 = new Point {x= 1; y = 1};
+  var p2 = new Point { x = -1; y = 2};
+  var p3 = new Point { x = -1; y = -1};
+  var t = new Triangle{a=p1; b=p2; c=p3};
+  t  = shift(t,3,0);
+  t = rotate_90(t);
+  t = apply_function(square,t);
+  return t.a.x;
+}
