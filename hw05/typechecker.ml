@@ -37,6 +37,9 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
   | Neg | Bitnot -> (TInt, TInt)
   | Lognot       -> (TBool, TBool)
 
+
+let sort_fields (fields:Ast.field list) : Ast.field list =
+  List.sort(fun f1 f2 -> compare (f1.fieldName) (f2.fieldName)) fields
 (* subtyping ---------------------------------------------------------------- *)
 (* Decides whether H |- t1 <: t2
     - assumes that H contains the declarations of all the possible struct types
@@ -73,13 +76,15 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
 
   let subtype_struc  (id1:Ast.id) (id2:Ast.id) : bool =
    begin match (lookup_struct_option id1 c,lookup_struct_option id2 c) with
-    | (Some f1, Some f2) -> compare_fields (List.sort(fun f -> compare f) f1) (List.sort(fun f -> compare f) f2)
+    | (Some f1, Some f2) -> compare_fields (sort_fields f1) (sort_fields f2)
     | _ -> false
    end
   in
 
   let subtype_fun ((args1:ty list), (ret1:ret_ty)) ((args2:ty list), (ret2:ret_ty)) :bool =
-    List.for_all (fun (a1,a2) -> subtype c a1 a2) (List.combine args1 args2)
+    let combined = try List.combine args1 args2 with Invalid_argument _ -> [(TBool,TInt)]  in
+    (*This is just so it returns false if args different size instead of error*)
+    List.for_all (fun (a1,a2) -> subtype c a1 a2) combined
     && (sub_rt_type c ret1 ret2)
   in
 
@@ -341,6 +346,31 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     else type_error e ("The function inputs are not the correct type in function: " ^ (string_of_exp fname))
   in
 
+
+  let typecheck_struct (id:id) (es:(id * exp node) list) :Ast.ty =
+    let fields = begin match lookup_struct_option id c with
+              | Some x -> sort_fields x
+              | None -> type_error e ("Undefined struct: " ^ id)
+            end in
+    let fields' = sort_fields @@ List.map(fun (id, e) ->{fieldName=id;ftyp=(typecheck_exp c e)}) es in
+    let bools = try List.map2(fun f' f -> subtype c f'.ftyp f.ftyp) fields' fields
+    with Invalid_argument  _ -> type_error e ("Structure " ^ id ^ " new declaration dont have the same amount of fields") in
+    if(List.for_all(fun b -> b = true) bools) then TRef(RStruct id) else type_error e ("Fields dont match in structure " ^ id)
+  in
+
+  let typecheck_proj (e: exp node) (fieldname:id) :Ast.ty =
+    let fields = begin match typecheck_exp c e with
+      | TRef(RStruct id) -> begin match lookup_struct_option id c with
+                             | Some x -> x
+                             | None -> type_error e ("Trying to access non existent struct: " ^ id)
+                            end
+      | _ -> type_error e ("Trying to access field: " ^ fieldname ^ " in " ^ (string_of_exp e) ^ " which is not a struct")
+    end in
+    try (List.find(fun f -> f.fieldName = fieldname) fields).ftyp
+    with Not_found -> type_error e ("Field: " ^ fieldname ^ " doesnt exist for structure" ^ (string_of_exp e))
+  in
+
+
   begin match e.elt with
     | CNull rty -> typecheck_ty e c (TRef rty); TNullRef rty
     | CBool _ -> TBool
@@ -351,12 +381,11 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     | NewArr (t, e1, id ,e2) -> typecheck_newarr t e1 id e2
     | Index (e1,e2) -> typecheck_index e1 e2
     | Length e -> typecheck_length e
-    | CStruct _ -> failwith "unimplmented"
-    | Proj _ -> failwith "unimplmented"
+    | CStruct (id, es) -> typecheck_struct id es
+    | Proj (e, id) -> typecheck_proj e id
     | Call (fname, args) -> typecheck_call fname args
     | Bop (op, e1, e2) ->typecheck_binop op e1 e2
     | Uop (op, e) -> typecheck_unop op e
-    (* | _ -> failwith "unimplemented" *)
   end
 
 (* statements --------------------------------------------------------------- *)
@@ -643,7 +672,20 @@ let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   List.fold_right (fun decl ->
       match decl with
         | Gvdecl {elt={name=id;init=exp}} ->
+
           fun c ->
+            (* TODO: error_global fptr scope*)
+            begin match exp.elt with
+              | Id id2 -> begin match lookup_global_option id2 c with
+                            | Some _ ->
+                              begin match lookup_global_option id2 tc with
+                                | None -> type_error (no_loc "") ("cant assign global variable: " ^ id ^ " to another global variable: " ^ id2 )
+                                | Some _ -> ()
+                              end
+                            | None -> ()
+                          end
+              | _ -> ()
+            end;
             begin match lookup_global_option id c with
               | Some _ -> type_error (no_loc "") (id ^ " global variable already declared(double decleration)")
               | None -> add_global c id (typecheck_exp c exp)

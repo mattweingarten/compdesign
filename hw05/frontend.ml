@@ -339,8 +339,8 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
       (arr_ty, arr_op, alloc_code >@ ind_code)
   (* ARRAY TASK: Modify the compilation of the NewArr construct to implement the
      initializer:
-         - the initializer is a loop that uses id as the index
-         - each iteration of the loop the code evaluates e2 and assigns it
+     - the initializer is a loop that uses id as the index
+     - each iteration of the loop the code evaluates e2 and assigns it
            to the index stored in id.
 
      Note: You can either write code to generate the LL loop directly, or
@@ -348,26 +348,38 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
      compile that into LL code...
   *)
   | Ast.NewArr (elt_ty, e1, id, e2) ->
-      let _, size_op, size_code = cmp_exp tc c e1 in
+      let size_ty, size_op, size_code = cmp_exp tc c e1 in
       let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
+      let arr_id = gensym "newarr" in
+      let arr_exp = no_loc (Id arr_id) in
       let i_id = gensym "i" in
       let i = no_loc (Id i_id) in
-      let loop =
-        no_loc
-          (For
-             ( [ (i_id, no_loc (CInt 0L)) ],
-               Some (no_loc (Bop (Lt, i, e1))),
-               Some (no_loc (Assn (i, no_loc (Bop (Add, i, no_loc (CInt 1L)))))),
-               [ no_loc (Assn (no_loc (Index (no_loc (Id id), i)), e2)) ] ))
+      let id_nod = no_loc (Id id) in
+      let for_exp = Some (no_loc (Bop (Lt, id_nod, e1))) in
+      let for_stmt =
+        Some
+          (no_loc (Assn (id_nod, no_loc (Bop (Add, id_nod, no_loc (CInt 1L))))))
       in
-      let loop_ctxt, loop_code = cmp_stmt tc c arr_ty loop in
-      (arr_ty, arr_op, size_code >@ alloc_code >@ loop_code)
+      let for_stmts =
+        [ no_loc (Assn (no_loc (Index (arr_exp, id_nod)), e2)) ]
+      in
+      let ast_loop =
+        For ([ (id, no_loc (CInt 0L)) ], for_exp, for_stmt, for_stmts)
+      in
+
+      Printf.printf "%s\n" (Llutil.string_of_ty arr_ty);
+      (* Printf.printf "%s\n" (Llutil.string_of_operand arr_op);
+      Astlib.print_exp arr_exp;
+      *)
+      let new_c = Ctxt.add c arr_id (Ptr arr_ty, arr_op) in
+      let loop_c, loop_code = cmp_stmt tc new_c Void (no_loc ast_loop) in
+      (arr_ty, arr_op, alloc_code >@ loop_code)
   (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
-       - use the TypeCtxt operations to compute getelementptr indices
-       - compile the initializer expression
-       - store the resulting value into the structure
-   *)
+     - use the TypeCtxt operations to compute getelementptr indices
+     - compile the initializer expression
+     - store the resulting value into the structure
+  *)
   | Ast.CStruct (id, l) ->
       let s_ty, s_op = Ctxt.lookup id c in
       let fs_code =
@@ -407,13 +419,11 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
      You will find the TypeCtxt.lookup_field_name function helpfule.
   *)
   | Ast.Proj (e, i) ->
-      let s_ty, s_op, s_code = cmp_exp tc c e in
-      let f_ty, ind = TypeCtxt.lookup_field_name i tc in
-      let ptr = Ptr (cmp_ty tc f_ty) in
-      let p_id = gensym "proj" in
-      ( ptr,
-        Id p_id,
-        s_code >@ lift [ (p_id, Gep (s_ty, s_op, [ Const 0L; Const ind ])) ] )
+      let src_ty, src_op, src_code = cmp_exp tc c e in
+      let ret_ty, ret_index = TypeCtxt.lookup_field_name i tc in
+      let gep_id = gensym "index" in
+      let ret_op = Gep (src_ty, src_op, [ Const 0L; Const ret_index ]) in
+      (cmp_ty tc ret_ty, Id gep_id, src_code >:: I (gep_id, ret_op))
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the
      GEP calculation. This should be very straightforward, except that you'll need to use a Bitcast.
      You might want to take a look at the implementation of 'oat_assert_array_length'
@@ -423,6 +433,7 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
   | Ast.Index (e, i) ->
       let arr_ty, arr_op, arr_code = cmp_exp tc c e in
       let ind_ty, ind_op, ind_code = cmp_exp tc c i in
+      Printf.printf "%s\n" (Llutil.string_of_ty arr_ty);
       let ans_ty =
         match arr_ty with
         | Ptr (Struct [ _; Array (_, t) ]) -> t
@@ -480,7 +491,7 @@ and cmp_exp_as (tc : TypeCtxt.t) (c : Ctxt.t) (e : Ast.exp node) (t : Ll.ty) :
    Left-hand-sides of assignment statements must either be OAT identifiers,
    or an index into some arbitrary expression of array type. Otherwise, the
    program is not well-formed and your compiler may throw an error.
- *)
+*)
 and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
     : Ctxt.t * stream =
   match stmt.elt with
@@ -508,17 +519,32 @@ and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
         >:: L lm )
   (* CAST TASK: Fill in this case of the compiler to implement the 'if?' checked
      null downcast statement.
-       - check whether the value computed by exp is null, if so jump to
+     - check whether the value computed by exp is null, if so jump to
          the 'null' block, otherwise take the 'notnull' block
 
-       - the identifier id is in scope in the 'nutnull' block and so
+     - the identifier id is in scope in the 'nutnull' block and so
          needs to be allocated (and added to the context)
 
-       - as in the if-the-else construct, you should jump to the common
+     - as in the if-the-else construct, you should jump to the common
          merge label after either block
   *)
   | Ast.Cast (typ, id, exp, notnull, null) ->
-      failwith "todo: implement Ast.Cast case"
+      let e_ty, e_op, e_code = cmp_exp tc c exp in
+      let new_c = Ctxt.add c id (Ptr e_ty, e_op) in
+      Printf.printf "here %s\n" (Llutil.string_of_ty e_ty);
+      let nn_code = cmp_block tc new_c rt notnull in
+      let null_code = cmp_block tc c rt null in
+      let eq_id, null_i, notnull_i, merge_i =
+        (gensym "compare", gensym "null", gensym "notnull", gensym "merge")
+      in
+      ( c,
+        []
+        >:: E (id, Alloca e_ty)
+        >@ e_code
+        >:: I (eq_id, Icmp (Eq, e_ty, e_op, Null))
+        >:: T (Cbr (Id eq_id, null_i, notnull_i))
+        >:: L null_i >@ null_code >:: T (Br merge_i) >:: L notnull_i >@ nn_code
+        >:: T (Br merge_i) >:: L merge_i )
   | Ast.While (guard, body) ->
       let guard_ty, guard_op, guard_code = cmp_exp tc c guard in
       let lcond, lbody, lpost = (gensym "cond", gensym "body", gensym "post") in
@@ -609,7 +635,7 @@ let cmp_global_ctxt (tc : TypeCtxt.t) (c : Ctxt.t) (p : Ast.prog) : Ctxt.t =
 (* Compile a function declaration in global context c. Return the LLVMlite cfg
    and a list of global declarations containing the string literals appearing
    in the function.
- *)
+*)
 let cmp_fdecl (tc : TypeCtxt.t) (c : Ctxt.t) (f : Ast.fdecl node) :
     Ll.fdecl * (Ll.gid * Ll.gdecl) list =
   let { frtyp; args; body } = f.elt in
