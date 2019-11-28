@@ -309,8 +309,8 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
         arr_code
         >@ lift
              [
-               (gep_id, Gep (arr_ty, arr_op, [ Const 0L; Const 0L ]));
-               (len_id, Load (I64, Id gep_id));
+               (len_id, Gep (arr_ty, arr_op, [ Const 0L; Const 0L ]));
+               (* (len_id, Load (I64, Id gep_id)); *)
              ] )
   | Ast.Index (e, i) ->
       let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
@@ -350,10 +350,10 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
   | Ast.NewArr (elt_ty, e1, id, e2) ->
       let size_ty, size_op, size_code = cmp_exp tc c e1 in
       let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-      let arr_id = gensym "ptarr" in
+      let arr_id, len_id = (gensym "ptarr", gensym "len") in
       let arr_exp = no_loc (Id arr_id) in
       let id_nod = no_loc (Id id) in
-      let for_exp = Some (no_loc (Bop (Lt, id_nod, e1))) in
+      let for_exp = Some (no_loc (Bop (Lt, id_nod, no_loc (Id len_id)))) in
       let for_stmt =
         Some
           (no_loc (Assn (id_nod, no_loc (Bop (Add, id_nod, no_loc (CInt 1L))))))
@@ -365,12 +365,15 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
         For ([ (id, no_loc (CInt 0L)) ], for_exp, for_stmt, for_stmts)
       in
       let new_c = Ctxt.add c arr_id (Ptr arr_ty, Id arr_id) in
-      let loop_c, loop_code = cmp_stmt tc new_c Void (no_loc ast_loop) in
+      let new_c' = Ctxt.add new_c len_id (Ptr size_ty, Id len_id) in
+      let loop_c, loop_code = cmp_stmt tc new_c' Void (no_loc ast_loop) in
       ( arr_ty,
         arr_op,
         []
         >:: E (arr_id, Alloca arr_ty)
-        >@ alloc_code
+        >@ size_code >@ alloc_code
+        >:: E (len_id, Alloca size_ty)
+        >:: I (len_id, Store (size_ty, size_op, Id len_id))
         >:: I (gensym "s", Store (arr_ty, arr_op, Id arr_id))
         >@ loop_code )
   (* STRUCT TASK: complete this code that compiles struct expressions.
@@ -380,10 +383,14 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
      - store the resulting value into the structure
   *)
   | Ast.CStruct (id, l) ->
-      let s_ty, s_op = Ctxt.lookup id c in
+      Printf.printf "here1\n";
+      let s_ty = cmp_ty tc (TNullRef (RStruct id)) in
+      let s_op = Ll.Id id in
+      Printf.printf "here3 %s\n" (Llutil.string_of_ty s_ty);
       let fs_code =
         List.fold_right
           (fun (f_id, f_e) acc ->
+            Printf.printf "here2\n";
             let i = TypeCtxt.index_of_field id f_id tc in
             let gep_id, init_id, res_id =
               (gensym "gep", gensym "field", gensym "res")
@@ -394,10 +401,12 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
                 (gep_id, Gep (i_ty, i_op, [ Const 0L; Const (Int64.of_int i) ]));
               ]
             in
+            Printf.printf "here4\n";
             let store_code = [ (res_id, Store (i_ty, i_op, Id gep_id)) ] in
             (lift gep_code >@ i_code >@ lift store_code) :: acc)
           l []
       in
+      Printf.printf "here5\n";
       (s_ty, s_op, List.flatten fs_code)
   | Ast.Proj (e, id) ->
       let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
@@ -418,8 +427,10 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
      You will find the TypeCtxt.lookup_field_name function helpfule.
   *)
   | Ast.Proj (e, i) ->
+      Printf.printf "here proj\n";
       let src_ty, src_op, src_code = cmp_exp tc c e in
       let ret_ty, ret_index = TypeCtxt.lookup_field_name i tc in
+      Astlib.print_ty ret_ty;
       let gep_id = gensym "index" in
       let ret_op = Gep (src_ty, src_op, [ Const 0L; Const ret_index ]) in
       (cmp_ty tc ret_ty, Id gep_id, src_code >:: I (gep_id, ret_op))
@@ -438,6 +449,7 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
         | _ -> failwith "Index: indexed into non pointer"
       in
       let ptr_id, tmp_id = (gensym "index_ptr", gensym "tmp") in
+      Printf.printf "here1 index %s\n" (Llutil.string_of_ty arr_ty);
       ( ans_ty,
         Id ptr_id,
         arr_code >@ ind_code
@@ -458,6 +470,7 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
 
 and cmp_call (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node)
     (es : Ast.exp node list) : Ll.ty * Ll.operand * stream =
+  Printf.printf "here1 call\n";
   let t, op, s = cmp_exp tc c exp in
   let ts, rt =
     match t with
@@ -534,6 +547,7 @@ and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
       let eq_id, null_i, notnull_i, merge_i =
         (gensym "compare", gensym "null", gensym "notnull", gensym "merge")
       in
+      Printf.printf "here1 cast %s\n" (Llutil.string_of_ty e_ty);
       ( c,
         []
         >:: E (id, Alloca e_ty)
@@ -563,6 +577,7 @@ and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
       (c, stream)
   | Ast.Ret None -> (c, [ T (Ret (Void, None)) ])
   | Ast.Ret (Some e) ->
+      Printf.printf "here1 ret\n";
       let op, code = cmp_exp_as tc c e rt in
       (c, code >:: T (Ret (rt, Some op)))
   | Ast.SCall (f, es) ->

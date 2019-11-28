@@ -84,13 +84,13 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
   let subtype_fun ((args1:ty list), (ret1:ret_ty)) ((args2:ty list), (ret2:ret_ty)) :bool =
     let combined = try List.combine args1 args2 with Invalid_argument _ -> [(TBool,TInt)]  in
     (*This is just so it returns false if args different size instead of error*)
-    List.for_all (fun (a1,a2) -> subtype c a1 a2) combined
+    List.for_all (fun (a1,a2) -> subtype c a2 a1) combined
     && (sub_rt_type c ret1 ret2)
   in
 
   begin match (t1, t2) with
     | (RString, RString) -> true
-    | (RArray x, RArray y) -> subtype c x y
+    | (RArray x, RArray y) -> x = y
     | (RStruct id1, RStruct id2) -> subtype_struc id1 id2
     | (RFun (args1, ret1), RFun (args2, ret2)) -> subtype_fun (args1, ret1) (args2, ret2)
     | _ -> false
@@ -165,120 +165,6 @@ and typecheck_ret (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
    a=1} is well typed.  (You should sort the fields to compare them.)
 
 *)
-(* let check_struct_subtypes (c : Tctxt.t) fs1 fs2 : bool =
-  let s1 = List.sort (fun (id1, _) (id2, _) -> compare id1 id2) fs1 in
-  let s2 =
-    List.sort
-      (fun { fieldName = id1 } { fieldName = id2 } -> compare id1 id2)
-      fs2
-  in
-  let subtys = List.map2 (fun (_, t1) { ftyp = t2 } -> subtype c t1 t2) s1 s2 in
-  List.fold_left ( && ) true subtys
-
-let check_subtypes c tys1 tys2 : bool =
-  List.fold_left ( && ) true
-    (List.map2 (fun ty1 ty2 -> subtype c ty1 ty2) tys1 tys2)
-
-let rec find_fields fs id =
-  match fs with
-  | { fieldName = name; ftyp = t } :: fs' ->
-      if id = name then t else find_fields fs' id
-  | [] -> raise Not_found
-
-  let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
-    (* let error = type_error e ("Type mismatch in expression: " ^ (string_of_exp e)) in *)
-    match e.elt with
-    | CNull rty ->
-        typecheck_ty e c (TRef rty);
-        TNullRef rty
-    | CBool _ -> TBool
-    | CInt _ -> TInt
-    | CStr _ -> TRef RString
-    | Id id -> typecheck_exp_id e c id
-    | CArr (t, es) ->
-        typecheck_ty e c t;
-        if
-          List.fold_left ( && ) true
-            (List.map (fun exp -> subtype c (typecheck_exp c exp) t) es)
-        then t
-        else type_error e "illegal array declaration"
-    | NewArr (t, e1, x, e2) ->
-        typecheck_ty e c t;
-        if typecheck_exp c e1 != TInt then type_error e "array size not int";
-        if lookup_local_option x c != None then
-          type_error e @@ x ^ " already defined";
-        let e2_ty = typecheck_exp (add_local c x TInt) e2 in
-        if subtype c e2_ty t then e2_ty
-        else type_error e "invalid array definition"
-    | Index (e1, e2) ->
-        let arr_ty =
-          match typecheck_exp c e1 with
-          | TRef (RArray t) -> t
-          | _ -> type_error e "not array type"
-        in
-        if typecheck_exp c e2 = TInt then arr_ty else type_error e "invalid index"
-    | Length arr -> (
-        match typecheck_exp c arr with
-        | TRef (RArray t) -> TInt
-        | _ -> type_error e "not array, cannot get length" )
-    | CStruct (id, fs) ->
-        let struc =
-          match lookup_struct_option id c with
-          | None -> type_error e @@ "undefined struct " ^ id
-          | Some fs -> fs
-        in
-        if
-          check_struct_subtypes c
-            (List.map (fun (id, exp) -> (id, typecheck_exp c exp)) fs)
-            struc
-          = false
-        then type_error e "invalid struct fields";
-        TRef (RStruct id)
-    | Proj (exp, id) -> (
-        let s_id =
-          match typecheck_exp c exp with
-          | TRef (RStruct id) -> id
-          | _ -> type_error e "not a struct"
-        in
-        let s_fs =
-          match lookup_struct_option id c with
-          | Some fs -> fs
-          | _ -> type_error e "undefined struct"
-        in
-        try find_fields s_fs id
-        with Not_found ->
-          type_error e @@ "field " ^ id ^ " not defined for struct" )
-    | Call (f, args) ->
-        let f_args, f_ret =
-          match typecheck_exp c f with
-          | TRef (RFun (args, RetVal retty)) -> (args, retty)
-          | _ -> type_error e "not function"
-        in
-        let args_tys = List.map (fun e -> typecheck_exp c e) args in
-        if check_subtypes c args_tys f_args then f_ret
-        else type_error e "invalid argument types"
-    | Bop (Eq, e1, e2) | Bop (Neq, e1, e2) ->
-        let e1_ty = typecheck_exp c e1 in
-        let e2_ty = typecheck_exp c e2 in
-        if subtype c e1_ty e2_ty && subtype c e2_ty e1_ty then TBool
-        else type_error e "invalid comparison types"
-    | Bop (bop, e1, e2) ->
-        let e1_ty = typecheck_exp c e1 in
-        let e2_ty = typecheck_exp c e2 in
-        let t1, t2, final = typ_of_binop bop in
-        if e1_ty = t1 && e2_ty = t2 then final
-        else type_error e "invalid bop types"
-    | Uop (uop, exp) ->
-        let u_ty = typ_of_unop uop in
-        let e_ty = typecheck_exp c exp in
-        if e_ty = fst u_ty then snd u_ty else type_error e "illegal uop type"
-
-  and typecheck_exp_id (e : Ast.exp node) (c : Tctxt.t) (id : Ast.id) : Ast.ty =
-    match Tctxt.lookup_local_option id c with
-    | None -> lookup_global id c
-    | Some t -> t *)
-
-
 
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
 
@@ -473,16 +359,18 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
   in
 
 
-  let type_scall (fname:exp node) (args: exp node list) :Tctxt.t * bool =
+
+let type_scall (fname:exp node) (args: exp node list) :Tctxt.t * bool =
     let id = match fname.elt with | Id id -> id | _ -> type_error s ("Invalid function name") in
-    let args_t' = List.map (fun e -> typecheck_exp tc e) args in
+    let args_t' = List.map (fun e ->  typecheck_exp tc e) args in
     let args_t,return = match typecheck_exp tc fname with
     | TRef(RFun(args,ret)) -> (args,ret) | _ -> type_error s (id ^  " not a function") in
     if (return != RetVoid) then type_error s ("function " ^ id ^  " does not return void");
     let bools = try List.map2(fun t' t -> subtype tc t' t) args_t' args_t with
     | Invalid_argument _ -> type_error s ("function " ^ id ^ " has invalid input types") in
-    (* (tc, List.for_all (fun b -> b) bools) *)
-    (tc, false)
+    if((List.for_all( fun b -> b = true) bools)) then (tc, false)
+    else type_error s ("Function args input are not supertypes of function in: " ^ (string_of_stmt s));
+
   in
 
 
