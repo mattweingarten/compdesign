@@ -371,43 +371,8 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
         >@ size_code >@ alloc_code
         >:: E (len_id, Alloca size_ty)
         >:: I (len_id, Store (size_ty, size_op, Id len_id))
-        >:: I (gensym "s", Store (arr_ty, arr_op, Id arr_id))
+        >:: I (arr_id, Store (arr_ty, arr_op, Id arr_id))
         >@ loop_code )
-  (*
-      let init_t, init_op, init_code = cmp_exp tc c e2 in
-      let cond, body, en, ind, cmp, cmp_i, ind_ptr, inc_i, arr_ptr =
-        ( gensym "cond",
-          gensym "body",
-          gensym "end",
-          gensym "ind",
-          gensym "cmp",
-          gensym "cmp_i",
-          gensym "ind_ptr",
-          gensym "inc_i",
-          gensym "arr_ptr" )
-      in
-      ( arr_ty,
-        arr_op,
-        alloc_code >@ size_code
-        >:: E (ind, Alloca I64)
-        >:: E (arr_ptr, Alloca arr_ty)
-        >:: I (ind, Store (I64, Const 0L, Id ind))
-        >:: I (arr_ptr, Store (arr_ty, arr_op, Id arr_ptr))
-        >:: T (Br cond) >:: L cond
-        >:: I (cmp_i, Load (I64, Id ind))
-        >:: I (cmp, Icmp (Slt, I64, Id cmp_i, size_op))
-        >:: T (Cbr (Id cmp, body, en))
-        >:: L body
-        >:: I
-              ( ind_ptr,
-                Gep (Ptr arr_ty, Id arr_ptr, [ Const 0L; Const 1L; Id cmp_i ])
-              )
-        >@ init_code
-        >:: I (gensym "s", Store (init_t, init_op, Id ind_ptr))
-        >:: I (inc_i, Binop (Add, I64, Id cmp_i, Const 1L))
-        >:: I (gensym "s", Store (I64, Id inc_i, Id ind))
-        >:: T (Br cond) >:: L en )
-        *)
   (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
      - use the TypeCtxt operations to compute getelementptr indices
@@ -415,8 +380,13 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
      - store the resulting value into the structure
   *)
   | Ast.CStruct (id, l) ->
-      let s_ty = cmp_ty tc (TNullRef (RStruct id)) in
-      let s_op = Ll.Id id in
+      let s_ptr = cmp_ty tc (TRef (RStruct id)) in
+      let s_ty = match s_ptr with Ptr s -> s | _ -> failwith "fuck" in
+      let s_id, d_id = (gensym "struct_ptr", gensym "struct") in
+      let s_op = Ll.Id s_id in
+      Astlib.print_exp exp;
+      Printf.printf "here cstruct %s\n" id;
+      Printf.printf "here cstruct %s\n" (Llutil.string_of_ty s_ty);
       let fs_code =
         List.fold_right
           (fun (f_id, f_e) acc ->
@@ -434,14 +404,20 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
             let i_ty, i_op, i_code = cmp_exp tc c f_e in
             let gep_code =
               [
-                (gep_id, Gep (i_ty, i_op, [ Const 0L; Const (Int64.of_int i) ]));
+                ( gep_id,
+                  Gep (Ptr s_ty, s_op, [ Const 0L; Const (Int64.of_int i) ]) );
               ]
             in
             let store_code = [ (res_id, Store (i_ty, i_op, Id gep_id)) ] in
             (lift gep_code >@ i_code >@ lift store_code) :: acc)
           l []
       in
-      (s_ty, s_op, List.flatten fs_code)
+      ( s_ty,
+        Id d_id,
+        []
+        >:: E (s_id, Alloca s_ty)
+        >@ List.flatten fs_code
+        >:: I (d_id, Load (s_ptr, Id s_id)) )
   | Ast.Proj (e, id) ->
       let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
       let ans_id = gensym "proj" in
@@ -461,12 +437,18 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
      You will find the TypeCtxt.lookup_field_name function helpfule.
   *)
   | Ast.Proj (e, i) ->
+      Astlib.print_exp e;
       let src_ty, src_op, src_code = cmp_exp tc c e in
+      Printf.printf "here cast %s\n" (Llutil.string_of_ty src_ty);
       let ret_ty, ret_index = TypeCtxt.lookup_field_name i tc in
-      let gep_id = gensym "index" in
-      Llutil.string_of_ty @@ cmp_ty tc ret_ty;
-      let ret_op = Gep (src_ty, src_op, [ Const 0L; Const ret_index ]) in
-      (cmp_ty tc ret_ty, Id gep_id, src_code >:: I (gep_id, ret_op))
+      let gep_id, s_id = (gensym "index", gensym "struct") in
+      let ret_op = Gep (Ptr src_ty, Id s_id, [ Const 0L; Const ret_index ]) in
+      ( cmp_ty tc ret_ty,
+        Id gep_id,
+        src_code
+        >:: E (s_id, Alloca src_ty)
+        >:: I (s_id, Store (src_ty, src_op, Id s_id))
+        >:: I (gep_id, ret_op) )
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the
      GEP calculation. This should be very straightforward, except that you'll need to use a Bitcast.
      You might want to take a look at the implementation of 'oat_assert_array_length'
