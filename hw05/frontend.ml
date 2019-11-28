@@ -381,12 +381,11 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
   *)
   | Ast.CStruct (id, l) ->
       let s_ptr = cmp_ty tc (TRef (RStruct id)) in
-      let s_ty = match s_ptr with Ptr s -> s | _ -> failwith "fuck" in
+      let s_ty =
+        match s_ptr with Ptr s -> s | _ -> failwith "not struct pointer"
+      in
       let s_id, d_id = (gensym "struct_ptr", gensym "struct") in
       let s_op = Ll.Id s_id in
-      Astlib.print_exp exp;
-      Printf.printf "here cstruct %s\n" id;
-      Printf.printf "here cstruct %s\n" (Llutil.string_of_ty s_ty);
       let fs_code =
         List.fold_right
           (fun (f_id, f_e) acc ->
@@ -437,9 +436,7 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
      You will find the TypeCtxt.lookup_field_name function helpfule.
   *)
   | Ast.Proj (e, i) ->
-      Astlib.print_exp e;
       let src_ty, src_op, src_code = cmp_exp tc c e in
-      Printf.printf "here cast %s\n" (Llutil.string_of_ty src_ty);
       let ret_ty, ret_index = TypeCtxt.lookup_field_name i tc in
       let gep_id, s_id = (gensym "index", gensym "struct") in
       let ret_op = Gep (Ptr src_ty, Id s_id, [ Const 0L; Const ret_index ]) in
@@ -553,13 +550,9 @@ and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
          merge label after either block
   *)
   | Ast.Cast (typ, id, exp, notnull, null) ->
-      Astlib.print_ty (TRef typ);
-      Printf.printf "here cast %s\n" id;
       Astlib.print_exp exp;
       let e_ty, e_op, e_code = cmp_exp tc c exp in
-      Printf.printf "here cast %s\n" (Llutil.string_of_ty e_ty);
       let t = cmp_ty tc (TNullRef typ) in
-      Printf.printf "here cast %s\n" (Llutil.string_of_ty t);
       let new_c = Ctxt.add c id (Ptr t, e_op) in
       let nn_code = cmp_block tc new_c rt notnull in
       let null_code = cmp_block tc c rt null in
