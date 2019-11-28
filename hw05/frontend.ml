@@ -307,11 +307,8 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
       ( I64,
         Id len_id,
         arr_code
-        >@ lift
-             [
-               (len_id, Gep (arr_ty, arr_op, [ Const 0L; Const 0L ]));
-               (* (len_id, Load (I64, Id gep_id)); *)
-             ] )
+        >:: I (gep_id, Gep (arr_ty, arr_op, [ Const 0L; Const 0L ]))
+        >:: I (len_id, Load (Ptr I64, Id gep_id)) )
   | Ast.Index (e, i) ->
       let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
       let ans_id = gensym "index" in
@@ -350,7 +347,7 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
   | Ast.NewArr (elt_ty, e1, id, e2) ->
       let size_ty, size_op, size_code = cmp_exp tc c e1 in
       let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-      let arr_id, len_id = (gensym "ptarr", gensym "len") in
+      let arr_id, len_id, id_i = (gensym "ptarr", gensym "len", gensym id) in
       let arr_exp = no_loc (Id arr_id) in
       let id_nod = no_loc (Id id) in
       let for_exp = Some (no_loc (Bop (Lt, id_nod, no_loc (Id len_id)))) in
@@ -376,6 +373,41 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
         >:: I (len_id, Store (size_ty, size_op, Id len_id))
         >:: I (gensym "s", Store (arr_ty, arr_op, Id arr_id))
         >@ loop_code )
+  (*
+      let init_t, init_op, init_code = cmp_exp tc c e2 in
+      let cond, body, en, ind, cmp, cmp_i, ind_ptr, inc_i, arr_ptr =
+        ( gensym "cond",
+          gensym "body",
+          gensym "end",
+          gensym "ind",
+          gensym "cmp",
+          gensym "cmp_i",
+          gensym "ind_ptr",
+          gensym "inc_i",
+          gensym "arr_ptr" )
+      in
+      ( arr_ty,
+        arr_op,
+        alloc_code >@ size_code
+        >:: E (ind, Alloca I64)
+        >:: E (arr_ptr, Alloca arr_ty)
+        >:: I (ind, Store (I64, Const 0L, Id ind))
+        >:: I (arr_ptr, Store (arr_ty, arr_op, Id arr_ptr))
+        >:: T (Br cond) >:: L cond
+        >:: I (cmp_i, Load (I64, Id ind))
+        >:: I (cmp, Icmp (Slt, I64, Id cmp_i, size_op))
+        >:: T (Cbr (Id cmp, body, en))
+        >:: L body
+        >:: I
+              ( ind_ptr,
+                Gep (Ptr arr_ty, Id arr_ptr, [ Const 0L; Const 1L; Id cmp_i ])
+              )
+        >@ init_code
+        >:: I (gensym "s", Store (init_t, init_op, Id ind_ptr))
+        >:: I (inc_i, Binop (Add, I64, Id cmp_i, Const 1L))
+        >:: I (gensym "s", Store (I64, Id inc_i, Id ind))
+        >:: T (Br cond) >:: L en )
+        *)
   (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
      - use the TypeCtxt operations to compute getelementptr indices
@@ -383,15 +415,19 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
      - store the resulting value into the structure
   *)
   | Ast.CStruct (id, l) ->
-      Printf.printf "here1\n";
       let s_ty = cmp_ty tc (TNullRef (RStruct id)) in
       let s_op = Ll.Id id in
-      Printf.printf "here3 %s\n" (Llutil.string_of_ty s_ty);
       let fs_code =
         List.fold_right
           (fun (f_id, f_e) acc ->
-            Printf.printf "here2\n";
-            let i = TypeCtxt.index_of_field id f_id tc in
+            let i_opt = TypeCtxt.index_of_field_opt id f_id tc in
+            let i =
+              match i_opt with
+              | Some i -> i
+              | None ->
+                  failwith
+                    ("field " ^ f_id ^ " not found in struct " ^ id ^ "\n")
+            in
             let gep_id, init_id, res_id =
               (gensym "gep", gensym "field", gensym "res")
             in
@@ -401,12 +437,10 @@ let rec cmp_exp (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node) :
                 (gep_id, Gep (i_ty, i_op, [ Const 0L; Const (Int64.of_int i) ]));
               ]
             in
-            Printf.printf "here4\n";
             let store_code = [ (res_id, Store (i_ty, i_op, Id gep_id)) ] in
             (lift gep_code >@ i_code >@ lift store_code) :: acc)
           l []
       in
-      Printf.printf "here5\n";
       (s_ty, s_op, List.flatten fs_code)
   | Ast.Proj (e, id) ->
       let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
@@ -427,11 +461,10 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
      You will find the TypeCtxt.lookup_field_name function helpfule.
   *)
   | Ast.Proj (e, i) ->
-      Printf.printf "here proj\n";
       let src_ty, src_op, src_code = cmp_exp tc c e in
       let ret_ty, ret_index = TypeCtxt.lookup_field_name i tc in
-      Astlib.print_ty ret_ty;
       let gep_id = gensym "index" in
+      Llutil.string_of_ty @@ cmp_ty tc ret_ty;
       let ret_op = Gep (src_ty, src_op, [ Const 0L; Const ret_index ]) in
       (cmp_ty tc ret_ty, Id gep_id, src_code >:: I (gep_id, ret_op))
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the
@@ -449,7 +482,6 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
         | _ -> failwith "Index: indexed into non pointer"
       in
       let ptr_id, tmp_id = (gensym "index_ptr", gensym "tmp") in
-      Printf.printf "here1 index %s\n" (Llutil.string_of_ty arr_ty);
       ( ans_ty,
         Id ptr_id,
         arr_code >@ ind_code
@@ -470,7 +502,6 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c : Ctxt.t) (e : exp node) :
 
 and cmp_call (tc : TypeCtxt.t) (c : Ctxt.t) (exp : Ast.exp node)
     (es : Ast.exp node list) : Ll.ty * Ll.operand * stream =
-  Printf.printf "here1 call\n";
   let t, op, s = cmp_exp tc c exp in
   let ts, rt =
     match t with
@@ -540,22 +571,33 @@ and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
          merge label after either block
   *)
   | Ast.Cast (typ, id, exp, notnull, null) ->
+      Astlib.print_ty (TRef typ);
+      Printf.printf "here cast %s\n" id;
+      Astlib.print_exp exp;
       let e_ty, e_op, e_code = cmp_exp tc c exp in
-      let new_c = Ctxt.add c id (Ptr e_ty, e_op) in
+      Printf.printf "here cast %s\n" (Llutil.string_of_ty e_ty);
+      let t = cmp_ty tc (TNullRef typ) in
+      Printf.printf "here cast %s\n" (Llutil.string_of_ty t);
+      let new_c = Ctxt.add c id (Ptr t, e_op) in
       let nn_code = cmp_block tc new_c rt notnull in
       let null_code = cmp_block tc c rt null in
-      let eq_id, null_i, notnull_i, merge_i =
-        (gensym "compare", gensym "null", gensym "notnull", gensym "merge")
+      let eq_id, null_i, notnull_i, merge_i, tmp, id_i =
+        ( gensym "compare",
+          gensym "null",
+          gensym "notnull",
+          gensym "merge",
+          gensym "tmp",
+          gensym id )
       in
-      Printf.printf "here1 cast %s\n" (Llutil.string_of_ty e_ty);
+
       ( c,
-        []
-        >:: E (id, Alloca e_ty)
-        >@ e_code
+        [] >@ e_code
         >:: I (eq_id, Icmp (Eq, e_ty, e_op, Null))
         >:: T (Cbr (Id eq_id, null_i, notnull_i))
-        >:: L null_i >@ null_code >:: T (Br merge_i) >:: L notnull_i >@ nn_code
-        >:: T (Br merge_i) >:: L merge_i )
+        >:: L null_i >@ null_code >:: T (Br merge_i) >:: L notnull_i
+        >:: E (id_i, Alloca t)
+        >:: I (id_i, Store (e_ty, e_op, Id id_i))
+        >@ nn_code >:: T (Br merge_i) >:: L merge_i )
   | Ast.While (guard, body) ->
       let guard_ty, guard_op, guard_code = cmp_exp tc c guard in
       let lcond, lbody, lpost = (gensym "cond", gensym "body", gensym "post") in
@@ -577,7 +619,6 @@ and cmp_stmt (tc : TypeCtxt.t) (c : Ctxt.t) (rt : Ll.ty) (stmt : Ast.stmt node)
       (c, stream)
   | Ast.Ret None -> (c, [ T (Ret (Void, None)) ])
   | Ast.Ret (Some e) ->
-      Printf.printf "here1 ret\n";
       let op, code = cmp_exp_as tc c e rt in
       (c, code >:: T (Ret (rt, Some op)))
   | Ast.SCall (f, es) ->
