@@ -690,7 +690,6 @@ let rec cmp_gexp c (tc : TypeCtxt.t) (e : Ast.exp node) :
       let elts, gs =
         List.fold_right
           (fun (cid, cst) (elts, gs) ->
-            Astlib.print_exp cst;
             let gd, gs' = cmp_gexp c tc cst in
             (gd :: elts, gs' @ gs))
           cs ([], [])
