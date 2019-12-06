@@ -28,10 +28,20 @@ let dce_block (lb : uid -> Liveness.Fact.t) (ab : uid -> Alias.fact)
   let filter (id, insn) =
     match insn with
     | Call _ -> true
-    | Store _ ->
-        let fold k d a = a || is_live k id in
-        let alias_live = UidM.fold fold (ab id) false in
-        is_live id id || alias_live
+    | Store (_, _, op) ->
+        let alias = ab id in
+        let ptr_id =
+          match op with
+          | Id id | Gid id -> id
+          | _ -> failwith "not writing to pointer"
+        in
+        let fold k _ a = a || is_live k id in
+        let alias_live =
+          UidM.fold fold
+            (UidM.filter (fun k d -> d = Alias.SymPtr.MayAlias) alias)
+            false
+        in
+        is_live ptr_id id || alias_live
     | _ -> is_live id id
   in
   let new_insns = List.filter filter insns in
