@@ -20,10 +20,10 @@ module SymConst =
       | Const i -> Printf.sprintf "Const (%LdL)" i
       | UndefConst -> "UndefConst"
 
-    
+
   end
 
-(* The analysis computes, at each program point, which UIDs in scope will evaluate 
+(* The analysis computes, at each program point, which UIDs in scope will evaluate
    to integer constants *)
 type fact = SymConst.t UidM.t
 
@@ -37,7 +37,38 @@ type fact = SymConst.t UidM.t
    - Uid of all other instructions are NonConst-out
  *)
 let insn_flow (u,i:uid * insn) (d:fact) : fact =
-  failwith "Constprop.insn_flow unimplemented"
+
+
+  let bop_flow (bop:bop)(t:ty)(x: operand) (y:operand) :fact =
+    let map_bop =
+      begin match bop with
+        | Add -> Int64.add
+        | Sub -> Int64.sub
+        | Mul -> Int64.mul
+        (*TODO: continue binop*)
+        | _ -> failwith "unimplemented"
+      end
+    in
+    begin match (x,y) with
+      | (Const a, Const b) -> UidM.add u (SymConst.Const(map_bop a b)) d
+
+
+      | _ -> failwith "unimplemented"
+    end
+  in
+
+  let icmp_flow (cnd:cnd)(t:ty)(x: operand) (y:operand) :fact=
+    failwith "unimplemented"
+  in
+
+  begin match i with
+    | Binop (bop,t,x,y) -> bop_flow bop t x y
+    | Icmp (cnd,t,x,y) -> icmp_flow cnd t x y
+    | Store _ -> UidM.add u (SymConst.UndefConst) d
+    | Call (t,_,_) -> if (t = Void) then UidM.add u (SymConst.UndefConst) d
+                                    else UidM.add u (SymConst.NonConst) d
+    | _ -> UidM.add u (SymConst.NonConst) d
+  end
 
 (* The flow function across terminators is trivial: they never change const info *)
 let terminator_flow (t:terminator) (d:fact) : fact = d
@@ -50,11 +81,11 @@ module Fact =
 
     let insn_flow = insn_flow
     let terminator_flow = terminator_flow
-    
-    let normalize : fact -> fact = 
+
+    let normalize : fact -> fact =
       UidM.filter (fun _ v -> v != SymConst.UndefConst)
 
-    let compare (d:fact) (e:fact) : int  = 
+    let compare (d:fact) (e:fact) : int  =
       UidM.compare SymConst.compare (normalize d) (normalize e)
 
     let to_string : fact -> string =
@@ -62,7 +93,7 @@ module Fact =
 
     (* The constprop analysis should take the join over predecessors to compute the
        flow into a node. You may find the UidM.merge function useful *)
-    let combine (ds:fact list) : fact = 
+    let combine (ds:fact list) : fact =
       failwith "Constprop.Fact.combine unimplemented"
   end
 
@@ -72,26 +103,26 @@ module Solver = Solver.Make (Fact) (Graph)
 
 (* expose a top-level analysis operation ------------------------------------ *)
 let analyze (g:Cfg.t) : Graph.t =
-  (* the analysis starts with every node set to bottom (the map of every uid 
+  (* the analysis starts with every node set to bottom (the map of every uid
      in the function to UndefConst *)
   let init l = UidM.empty in
 
   (* the flow into the entry node should indicate that any parameter to the
      function is not a constant *)
-  let cp_in = List.fold_right 
+  let cp_in = List.fold_right
     (fun (u,_) -> UidM.add u SymConst.NonConst)
-    g.Cfg.args UidM.empty 
+    g.Cfg.args UidM.empty
   in
   let fg = Graph.of_cfg init cp_in g in
   Solver.solve fg
 
 
 (* run constant propagation on a cfg given analysis results ----------------- *)
-(* HINT: your cp_block implementation will probably rely on several helper 
+(* HINT: your cp_block implementation will probably rely on several helper
    functions.                                                                 *)
 let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
   let open SymConst in
-  
+
 
   let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
     let b = Cfg.block cfg l in
