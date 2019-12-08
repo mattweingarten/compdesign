@@ -28,6 +28,7 @@ Point square(Point p){
 }
 
 Triangle apply_function((Point) -> Point f, Triangle t){
+
   var new_t = new Triangle { a = f(t.a); b = f(t.b); c = f(t.c)};
   return new_t;
 }

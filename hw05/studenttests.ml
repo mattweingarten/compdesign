@@ -1,9 +1,12 @@
+(* 16923229, Simon Rodoni
+   17921537, Matthew Weingarten *)
+
+
 open Assert
 open Astlib
 open Tctxt
 open Gradedtests
-(* 16923229, Simon Rodoni
-   17921537, Matthew Weingarten *)
+
 
 
 (*
@@ -40,7 +43,7 @@ let unit_tests = [
 ]
 
 let triangle_test = [
-  ("triangle.oat","","2");
+  ("triangle.oat","","1");
 ]
 
 let provided_tests : suite = [
