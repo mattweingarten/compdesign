@@ -1,0 +1,18 @@
+global str = string[][][][][][][][][][] null;
+
+int program (int argc, string[] argv) {
+  str = new string[][][][][][][][][][1]{i1 ->
+  new string[][][][][][][][][1]{i2 ->
+  new string[][][][][][][][1]{i3 ->
+  new string[][][][][][][1]{i4 ->
+  new string[][][][][][1]{i5 ->
+  new string[][][][][1]{i6 ->
+  new string[][][][1]{i7 ->
+  new string[][][1]{i8 ->
+  new string[][1]{i9 ->
+  new string[1]{i10 -> "hello"}}}}}}}}}};
+
+  print_string (str[0][0][0][0][0][0][0][0][0][0]);
+  return 0;
+}
+

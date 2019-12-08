@@ -1,0 +1,22 @@
+#!/bin/bash
+
+TIMEOUT=240
+
+## Generic testing script for OCaml programs. Should be invoked as 
+#      testbin XXX YYY scores.out 
+# or 
+#      testbin XXX YYY scores.out SHOW_OUTPUT
+
+echo -e "<pre>"
+if [ ! -f ocamlbin ]; then 
+	 echo -e "Compilation failed. No tests run."
+	 exit 0
+fi
+(if [ -n "$4" ]; then
+     ./timeout3 -t $TIMEOUT ./ocamlbin -linux -scores $3 -feedback feedback.txt --grade || echo -e "Cannot run code because of infinite loop or raised exception."
+else
+     ./timeout3 -t $TIMEOUT ./ocamlbin -linux -scores $3 -feedback feedback.txt --grade &> /dev/null || echo -e "Cannot run code because of infinite loop or raised exception."
+fi 2> /dev/null) # stderr redirect to prevent "Terminated" message from being printed.
+chmod 0770 $3 feedback.txt 2> /dev/null
+cat feedback.txt           2> /dev/null
+echo -e "</pre>" 
