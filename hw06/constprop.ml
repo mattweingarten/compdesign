@@ -39,26 +39,57 @@ type fact = SymConst.t UidM.t
 let insn_flow (u,i:uid * insn) (d:fact) : fact =
 
 
-  let bop_flow (bop:bop)(t:ty)(x: operand) (y:operand) :fact =
-    let map_bop =
-      begin match bop with
-        | Add -> Int64.add
-        | Sub -> Int64.sub
-        | Mul -> Int64.mul
-        (*TODO: continue binop*)
-        | _ -> failwith "unimplemented"
-      end
-    in
-    begin match (x,y) with
-      | (Const a, Const b) -> UidM.add u (SymConst.Const(map_bop a b)) d
-
-
-      | _ -> failwith "unimplemented"
+  let eval_op (op:operand) :SymConst.t =
+    begin match op with
+      | Const x -> SymConst.Const x
+      | Gid id | Id id -> let res =
+        try UidM.find id d
+        with Not_found -> failwith ("Constproperror: couldnt find this ID:" ^ id)
+        in res
+      | Null -> failwith "Cannot evaluate null in eval_op"
     end
   in
 
+
+  let flow_function op x y :SymConst.t =
+    let i =  eval_op x in
+    let j = eval_op y in
+    begin match (i,j) with
+      | (SymConst.Const x, SymConst.Const y) -> SymConst.Const(op x y)
+      | (_, SymConst.UndefConst) -> SymConst.UndefConst
+      | (SymConst.UndefConst,_) -> SymConst.UndefConst
+      | _ -> SymConst.NonConst
+    end
+  in
+
+  (*TODO: optimization like mul with 0*)
+  let bop_flow (bop:bop)(t:ty)(x: operand) (y:operand) :fact =
+    let map_bop = begin match bop with
+        | Add -> Int64.add
+        | Sub -> Int64.sub
+        | Mul -> Int64.mul
+        | Shl ->  fun x y -> Int64.shift_left x (Int64.to_int y)
+        | Ashr -> fun x y -> Int64.shift_right x (Int64.to_int y)
+        | Lshr -> fun x y -> Int64.shift_right_logical x (Int64.to_int y)
+        | And -> Int64.logand
+        | Or -> Int64.logor
+        | Xor -> Int64.logxor
+      end
+    in
+    UidM.add u (flow_function map_bop x y) d
+  in
+
   let icmp_flow (cnd:cnd)(t:ty)(x: operand) (y:operand) :fact=
-    failwith "unimplemented"
+    let cmp_op = begin match cnd with
+      | Eq -> fun x y -> if (Int64.equal x y) then 1L else 0L
+      | Ne ->  fun x y -> if (Int64.equal x y) then 0L else 1L
+      | Slt -> fun x y -> if (Int64.compare x y) < 0 then 1L else 0L
+      | Sle -> fun x y -> if (Int64.compare x y) <= 0 then 1L else 0L
+      | Sgt -> fun x y -> if (Int64.compare x y) > 0 then 1L else 0L
+      | Sge -> fun x y -> if (Int64.compare x y) >= 0 then 1L else 0L
+    end
+    in
+    UidM.add u (flow_function cmp_op x y) d
   in
 
   begin match i with
@@ -94,7 +125,19 @@ module Fact =
     (* The constprop analysis should take the join over predecessors to compute the
        flow into a node. You may find the UidM.merge function useful *)
     let combine (ds:fact list) : fact =
-      failwith "Constprop.Fact.combine unimplemented"
+      let join_conts k (x:SymConst.t option) (y:SymConst.t option) :SymConst.t option=
+        begin match x, y with
+          | None, x  -> x | x, None -> x
+          | Some x, Some y -> begin match x,y with
+            | (Const a, Const b) -> if a = b then Some (SymConst.Const(a))
+                                             else Some (SymConst.NonConst)
+            | (_, SymConst.UndefConst) | (SymConst.UndefConst,_) -> Some (SymConst.UndefConst)
+            | _ -> Some (SymConst.NonConst)
+          end
+        end
+      in
+      let fold acc m = UidM.merge join_conts acc m in
+      List.fold_left fold UidM.empty ds
   end
 
 (* instantiate the general framework ---------------------------------------- *)
