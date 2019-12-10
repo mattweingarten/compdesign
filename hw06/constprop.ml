@@ -176,13 +176,13 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
   let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
     let b = Cfg.block cfg l in
     let cb = Graph.uid_out cg l in
-    let get_sym (id:uid) :SymConst.t =
-      try UidM.find id (cb id) with Not_found -> failwith ("cpblock: couldnt find ID: " ^ id)
+    let get_sym (uid:uid) (id:uid) :SymConst.t =
+      try UidM.find id (cb uid) with Not_found -> failwith ("cpblock: couldnt find ID: " ^ id)
     in
-    let replace (op:operand) :operand =
+    let replace (uid:uid)(op:operand) :operand =
       begin match op with
         | Id id | Gid id ->
-                    begin match get_sym id with
+                    begin match get_sym uid id with
                       | SymConst.Const(x) -> Ll.Const(x)
                       | _ -> op
                     end
@@ -190,19 +190,19 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
       end
     in
 
-    let replace_list (ops:operand list): operand list =
-      List.map(fun op -> replace op) ops
+    let replace_list (uid:uid) (ops:operand list): operand list =
+      List.map(fun op -> replace uid op) ops
     in
 
     let replace_insn ((id,i): (uid * insn)):(uid * insn) =
       let new_i = begin match i with
-        | Binop (bop,t, op1,op2) -> Binop (bop,t, replace (op1),replace (op2))
-        | Load (t, op) -> Load(t, replace(op))
-        | Store(t, op1,op2) -> Store(t, replace(op1), replace(op2))
-        | Icmp(c,t,op1,op2) -> Icmp(c,t,replace(op1),replace(op2))
-        | Call(t,op,args) -> Call(t,replace(op),(List.map(fun(id,op) -> (id,replace(op))) args))
-        | Bitcast (t1, op, t2) -> Bitcast(t1,replace(op),t2)
-        | Gep (t,op,ops) -> Gep(t,replace(op),replace_list(ops))
+        | Binop (bop,t, op1,op2) -> Binop (bop,t, replace id (op1),replace id (op2))
+        | Load (t, op) -> Load(t, replace id (op))
+        | Store(t, op1,op2) -> Store(t, replace id (op1), replace id (op2))
+        | Icmp(c,t,op1,op2) -> Icmp(c,t,replace id (op1),replace id (op2))
+        | Call(t,op,args) -> Call(t,replace id (op),(List.map(fun(id2,op) -> (id2,replace id (op))) args))
+        | Bitcast (t1, op, t2) -> Bitcast(t1,replace id (op),t2)
+        | Gep (t,op,ops) -> Gep(t,replace id (op),replace_list id (ops))
         | _ -> i
       end in (id,new_i)
     in
@@ -210,7 +210,7 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
     let rec replace_insns (insns:(uid * insn) list) :(uid * insn) list =
       begin match insns with
         | (uid, insn)::tail ->
-            begin match get_sym uid with
+            begin match get_sym uid uid with
               | SymConst.Const(_) -> List.append [] (replace_insns tail)
               | _ -> replace_insn(uid,insn) :: (replace_insns tail)
             end
@@ -221,10 +221,10 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
       begin match term with
         | Ret (t,o) -> begin match o with
                           | None -> (id,term)
-                          | Some op ->(id, Ret(t,Some(replace op)))
+                          | Some op ->(id, Ret(t,Some(replace id op)))
                        end
         | Br _ -> (id,term)
-        | Cbr (op, l1, l2) -> (id, Cbr(replace op, l1,l2))
+        | Cbr (op, l1, l2) -> (id, Cbr(replace id op, l1,l2))
       end
     in
     let new_block = {insns=(replace_insns b.insns);term=(replace_term b.term)} in
