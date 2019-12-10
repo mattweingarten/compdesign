@@ -2,7 +2,7 @@ open Ll
 open Datastructures
 
 let do_live =     ref false
-let do_cp =       ref false
+let do_cp =       ref true
 let do_alias =    ref false
 
 let print_live args (cfg:Cfg.t) : string =
@@ -31,13 +31,13 @@ let do_file fname print_fn =
   |> List.iter @@ fun (g,f) ->
                   let string_of_arg (t,u) = Printf.sprintf "%s %%%s" (Llutil.sot t) u in
                   let ts, t = f.f_ty in
-                  Printf.printf "define %s @%s(%s) {\n%s\n}\n" 
-                                (Llutil.sot t) g 
+                  Printf.printf "define %s @%s(%s) {\n%s\n}\n"
+                                (Llutil.sot t) g
                                 (String.concat ", " @@ List.map string_of_arg List.(combine ts f.f_param))
                                 (print_fn (List.combine ts f.f_param) (Cfg.of_ast f))
 
 let opt_file opt fname =
-  let opt_fdecl (gid,fdecl) = 
+  let opt_fdecl (gid,fdecl) =
     let og = opt (Cfg.of_ast fdecl) in
     gid, Cfg.to_ast og
   in
@@ -48,18 +48,13 @@ let opt_file opt fname =
 
   print_endline @@ Llutil.string_of_prog op
 
-  
 
-let () = 
+
+let () =
   if not !Sys.interactive then begin
       Arg.parse args (fun f -> files := f::!files) "Usage";
       (if !do_live  then List.iter (fun f -> do_file f print_live)  !files);
       (if !do_cp    then List.iter (fun f -> do_file f print_cp)    !files);
-      (if !do_alias then List.iter (fun f -> do_file f print_alias) !files);      
+      (if !do_alias then List.iter (fun f -> do_file f print_alias) !files);
 
     end
-  
-
-
-    
-

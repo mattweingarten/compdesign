@@ -1,4 +1,4 @@
-open Ll
+  open Ll
 open Datastructures
 
 (* The lattice of symbolic constants ---------------------------------------- *)
@@ -21,6 +21,13 @@ module SymConst =
       | UndefConst -> "UndefConst"
 
 
+   let join x y =
+    begin match x,y with
+      | (Const a, Const b) -> if a = b then Some (Const(a))
+                                       else Some (NonConst)
+      | (_,UndefConst) | (UndefConst,_) -> Some (UndefConst)
+      | _ -> Some (NonConst)
+   end
   end
 
 (* The analysis computes, at each program point, which UIDs in scope will evaluate
@@ -44,7 +51,9 @@ let insn_flow (u,i:uid * insn) (d:fact) : fact =
       | Const x -> SymConst.Const x
       | Gid id | Id id -> let res =
         try UidM.find id d
-        with Not_found -> failwith ("Constproperror: couldnt find this ID:" ^ id)
+        with Not_found ->
+        (* failwith ("Constproperror: couldnt find this ID:" ^ id) *)
+        SymConst.UndefConst
         in res
       | Null -> failwith "Cannot evaluate null in eval_op"
     end
@@ -125,18 +134,13 @@ module Fact =
     (* The constprop analysis should take the join over predecessors to compute the
        flow into a node. You may find the UidM.merge function useful *)
     let combine (ds:fact list) : fact =
-      let join_conts k (x:SymConst.t option) (y:SymConst.t option) :SymConst.t option=
+      let join_const k (x:SymConst.t option) (y:SymConst.t option) :SymConst.t option=
         begin match x, y with
           | None, x  -> x | x, None -> x
-          | Some x, Some y -> begin match x,y with
-            | (Const a, Const b) -> if a = b then Some (SymConst.Const(a))
-                                             else Some (SymConst.NonConst)
-            | (_, SymConst.UndefConst) | (SymConst.UndefConst,_) -> Some (SymConst.UndefConst)
-            | _ -> Some (SymConst.NonConst)
-          end
+          | Some x, Some y -> SymConst.join x y
         end
       in
-      let fold acc m = UidM.merge join_conts acc m in
+      let fold acc m = UidM.merge join_const acc m in
       List.fold_left fold UidM.empty ds
   end
 
@@ -167,10 +171,70 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
   let open SymConst in
 
 
+
+
   let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
     let b = Cfg.block cfg l in
     let cb = Graph.uid_out cg l in
-    failwith "Constprop.cp_block unimplemented"
+    let get_sym (id:uid) :SymConst.t =
+      try UidM.find id (cb id) with Not_found -> failwith ("cpblock: couldnt find ID: " ^ id)
+    in
+    let replace (op:operand) :operand =
+      begin match op with
+        | Id id | Gid id ->
+                    begin match get_sym id with
+                      | SymConst.Const(x) -> Ll.Const(x)
+                      | _ -> op
+                    end
+        | _ -> op
+      end
+    in
+
+    let replace_list (ops:operand list): operand list =
+      List.map(fun op -> replace op) ops
+    in
+
+    let replace_insn ((id,i): (uid * insn)):(uid * insn) =
+      let new_i = begin match i with
+        | Binop (bop,t, op1,op2) -> Binop (bop,t, replace (op1),replace (op2))
+        | Load (t, op) -> Load(t, replace(op))
+        | Store(t, op1,op2) -> Store(t, replace(op1), replace(op2))
+        | Icmp(c,t,op1,op2) -> Icmp(c,t,replace(op1),replace(op2))
+        | Call(t,op,args) -> Call(t,replace(op),(List.map(fun(id,op) -> (id,replace(op))) args))
+        | Bitcast (t1, op, t2) -> Bitcast(t1,replace(op),t2)
+        | Gep (t,op,ops) -> Gep(t,replace(op),replace_list(ops))
+        | _ -> i
+      end in (id,new_i)
+    in
+
+    let rec replace_insns (insns:(uid * insn) list) :(uid * insn) list =
+      begin match insns with
+        | (uid, insn)::tail ->
+            begin match get_sym uid with
+              | SymConst.Const(_) -> List.append [] (replace_insns tail)
+              | _ -> replace_insn(uid,insn) :: (replace_insns tail)
+            end
+        | [] -> []
+      end
+    in
+    let replace_term ((id,term) : (uid * terminator)) :(uid * terminator) =
+      begin match term with
+        | Ret (t,o) -> begin match o with
+                          | None -> (id,term)
+                          | Some op ->(id, Ret(t,Some(replace op)))
+                       end
+        | Br _ -> (id,term)
+        | Cbr (op, l1, l2) -> (id, Cbr(replace op, l1,l2))
+      end
+    in
+    let new_block = {insns=(replace_insns b.insns);term=(replace_term b.term)} in
+    let temp = LblM.remove l (cfg.blocks) in
+    {
+      blocks= LblM.add l new_block (cfg.blocks);
+      preds=cfg.preds;
+      ret_ty=cfg.ret_ty;
+      args=cfg.args
+    }
   in
 
   LblS.fold cp_block (Cfg.nodes cfg) cfg
