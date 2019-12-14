@@ -831,7 +831,7 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
 
 
   let add_color ((g,c):(graph * colors)) (uid:uid) :graph * colors =
-    let nb = UidM.find uid g in
+    let nb = try  UidM.find uid g with Not_found -> failwith "This shouldnt happen (finding node i just added)" in
     let av_col = List.init n (fun x -> x + 1) in
     let new_c = try List.find(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) av_col
                 with Not_found -> failwith "coudlnt find a color to fill in" in
@@ -875,7 +875,18 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
       end
     in
     let uid_ass = List.map(fun(uid,col) -> (uid,(col_to_loc col))) (UidM.bindings c) in
-    { uid_loc = (fun x -> List.assoc x uid_ass)
+    let fun_uid_ass x = List.assoc x uid_ass in
+    let lo =
+      fold_fdecl
+        (fun lo (x, _) -> (x, fun_uid_ass x)::lo)
+        (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
+        (fun lo (x, i) ->
+          if insn_assigns i
+          then (x, fun_uid_ass x)::lo
+          else (x, Alloc.LVoid)::lo)
+        (fun lo _ -> lo)
+        [] f in
+    { uid_loc = (fun x -> try List.assoc x lo with Not_found -> failwith ("No location assignment for this uid" ^ x))
     ; spill_bytes = 8 * !n_spill
     }
   in
@@ -885,9 +896,9 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
   let g = add_edges_to_graph(g1) in
   let g_after_color,final_colors = color_graph (g, colors) in
   let lo = create_layout final_colors in
-  Printf.printf "\nGRAPH REGALLOC\n---------------\n%s\n" (graph_to_string g);
+  (* Printf.printf "\nGRAPH REGALLOC\n---------------\n%s\n" (graph_to_string g);
   Printf.printf "\nGRAPH AFTER COLOR\n---------------\n%s\n" (graph_to_string g_after_color);
-  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors);
+  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors); *)
   lo
 
 
