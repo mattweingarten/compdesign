@@ -1,3 +1,15 @@
+int f(int a){
+  var b = 0;
+
+  var z = 0;
+  var d = 1;
+  var g = d +  (z + b);
+  return b + a;
+}
+
+
 int program (int argc, string[] argv) {
+  var x = 1 + 1;
+
   return 0;
 }

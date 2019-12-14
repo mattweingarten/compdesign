@@ -737,8 +737,7 @@ type graph = UidS.t UidM.t
 type colors = int UidM.t
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
 
-let n_spill = ref 0 in
-let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
+
 
 let pal = LocSet.(caller_save
                   |> remove (Alloc.LReg Rax)
@@ -747,13 +746,15 @@ let pal = LocSet.(caller_save
 in
 
 let n = LocSet.cardinal pal in
-let colors = UidM.empty in
+
 
 let cfg = of_ast(f) in
 let uids = LblM.fold(fun k d acc ->
             let uids = List.append (List.map(fun ins -> fst ins) d.insns) [fst d.term] in
                         List.append uids acc
                       ) cfg.blocks [] in
+
+let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids in
   let create_graph() :graph  =
     let set = List.fold_left (fun acc uid -> UidS.union acc (live uid))  UidS.empty uids in
     let g = UidS.fold( fun elt acc -> UidM.add elt UidS.empty acc) set UidM.empty in
@@ -785,7 +786,7 @@ let uids = LblM.fold(fun k d acc ->
   in
 
   let colors_to_string (c:colors) :string =
-    UidM.fold(fun k color acc -> k ^ ": " ^ (string_of_int color) ^ "\n") c ""
+    UidM.fold(fun k color acc -> k ^ ": " ^ (string_of_int color)^ "\n" ^ acc ^ "\n") c ""
   in
 
 
@@ -794,51 +795,100 @@ let uids = LblM.fold(fun k d acc ->
     Not_found -> None
   in
 
-  let add_node (g:graph) (c:colors) ((uid,edges):(uid * UidS.t)):graph * colors =
-    UidM.add uid edges g , c
+
+  let add_node ((g,c):(graph * colors)) ((uid,edges):(uid * UidS.t)):graph * colors =
+    (UidM.add uid edges g), c
   in
-  let remove_node(g:graph) (c:colors) (uid:uid) :graph* colors =
-    UidM.remove uid g, c
+  let remove_node ((g,c):(graph * colors)) (uid:uid) :graph* colors =
+    (UidM.remove uid g), c
   in
-  let colored (g:graph) (c:colors) :bool =
+  (* let colored (g:graph) (c:colors) :bool =
     let uncolored_nodes = UidM.fold(fun k elt acc ->
                                     if (UidM.mem k c) then acc
                                     else acc + 1 ) g 0 in
-   uncolored <= 1
-  in
-  let find_uncolored (g:graph) (c:colors) :uid =
-    UidM.find_first (fun k -> !(UidM.mem k c)) g
+   uncolored_nodes <= 1
+  in *)
+  (* let find_uncolored (g:graph) (c:colors) :uid =
+    fst @@ try UidM.find_first (fun k -> (UidM.mem k c) = false ) g with
+           Not_found -> failwith "Coudlnt find uncolored node"
+  in *)
+
+  let find_spill_node (g:graph): uid =
+    try fst @@ UidM.find_first(fun k -> UidS.cardinal (UidM.find k g) >= n) g with
+    Not_found -> failwith "trying to spill when not necessary"
   in
 
-  let add_color (g:graph) (c:colors) (uid:uid) :graph * colors =
+  let remove_node_and_edges (g:graph) (uid:uid) :graph =
+    let g0 = UidM.remove uid g in
+    UidM.map(fun set ->
+              UidS.filter(fun elt -> elt != uid) set
+            ) g0
+  in
+
+  let color_spill (c:colors) (uid:uid) :colors =
+      UidM.add uid (-1) c
+  in
+
+
+  let add_color ((g,c):(graph * colors)) (uid:uid) :graph * colors =
     let nb = UidM.find uid g in
     let av_col = List.init n (fun x -> x + 1) in
-    UidS.find_first(fun elt -> !(List.mem elt av_col)) nb
+    let new_c = try List.find(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) av_col
+                with Not_found -> failwith "coudlnt find a color to fill in" in
+    (g, (UidM.add uid new_c c))
   in
-  let rec color_graph (g:graph) (c:colors):graph * colors =
-    if (colored g c ) then (g,c) else
-    let (name,edges) = begin match pick_node g with
-      | None -> failwith "unimplented spill "
-      | Some x -> x
-    end in
-    let unc_uid  = find_uncolored g c in
-    add_node (fst (add_color (color_graph (remove_node g name)) c )) (name,edges)
-    (*coalasce*)
-    (*spill*)
+  let rec color_graph ((g,c):(graph * colors))   :graph * colors =
+    if (UidM.is_empty g ) then (g,c) else
+
+    if ((pick_node g) = None) then
+              let s = find_spill_node g in
+              let g_new = remove_node_and_edges g s in
+              let c_new = color_spill c s in
+              color_graph(g_new,c_new)
+    else
+              let (name,edges) = begin match (pick_node g) with | Some x -> x
+              | None -> failwith "failed to catch a spill" end in
+              add_color (add_node (color_graph((remove_node (g,c) name))) (name,edges)) name
   in
 
-  let create_layout (g:graph) (c:colors) :layout  =
-    failwith "unimplented layout graph"
+
+  (* let caller_save : LocSet.t =
+    [ Rdi; Rsi; Rdx; Rcx; R09; R08; Rax; R10; R11 ]
+    |> List.map (fun r -> Alloc.LReg r) |> LocSet.of_list *)
+
+
+  let create_layout (c:colors) :layout  =
+    let n_spill = ref 0 in
+    let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
+    let col_to_loc (col:int) :Alloc.loc =
+      begin match col with
+        | -1 -> spill()
+        | 0 -> Alloc.LVoid
+        | 1 -> Alloc.LReg (Rdi)
+        | 2 -> Alloc.LReg (Rsi)
+        | 3 -> Alloc.LReg (Rdx)
+        | 4 -> Alloc.LReg (R09)
+        | 5 -> Alloc.LReg (R08)
+        | 6 -> Alloc.LReg (R10)
+        | 7 -> Alloc.LReg (R11)
+        | _ -> failwith "Graph coloring algorithm assigned more colors then we have registers"
+      end
+    in
+    let uid_ass = List.map(fun(uid,col) -> (uid,(col_to_loc col))) (UidM.bindings c) in
+    { uid_loc = (fun x -> List.assoc x uid_ass)
+    ; spill_bytes = 8 * !n_spill
+    }
   in
 
 
   let g1 = create_graph() in
   let g = add_edges_to_graph(g1) in
-  let g_after_color = fst color_graph g c in
+  let g_after_color,final_colors = color_graph (g, colors) in
+  let lo = create_layout final_colors in
   Printf.printf "\nGRAPH REGALLOC\n---------------\n%s\n" (graph_to_string g);
   Printf.printf "\nGRAPH AFTER COLOR\n---------------\n%s\n" (graph_to_string g_after_color);
-  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string colors);
-  failwith "Backend.better_layout not implemented"
+  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors);
+  lo
 
 
 
@@ -905,74 +955,3 @@ let compile_prog {tdecls; gdecls; fdecls} : X86.prog =
   let g = fun (lbl, gdecl) -> Asm.data (Platform.mangle lbl) (compile_gdecl gdecl) in
   let f = fun (name, fdecl) -> prog_of_x86stream @@ compile_fdecl tdecls name fdecl in
   (List.map g gdecls) @ List.(flatten @@ map f fdecls)
-
-
-
-
-(*Initial graph*)
-
-(* let get (op:Ll.operand) :uid option =
-  begin match op with
-    | Null | Const _ -> None | Gid id | Id id -> Some id
-  end
-in
-
-let get_list (ops:Ll.operand list) :uid list =
-  List.fold_left (fun l op -> begin match get op with | None -> l | Some id -> id::l end) [] ops
-in
-
-let add_list (ops:Ll.operand list) (g:graph): graph =
-  List.fold_left (fun map op ->
-                    begin match get op with
-                      | None -> map
-                      | Some id -> UidM.add id UidS.empty map
-                    end
-                  ) g ops
-in
-
-let get_term (term:terminator) :uid option=
-  begin match term with
-    | Ret (_, op) -> begin match op with | None -> None | Some x -> get x end
-    | Br _ -> None
-    | Cbr (op,_,_) -> get op
-  end
-in
-
-let get_ins (insns :insn) :uid list =
-  begin match insns with
-    | Binop(_,_,op1,op2) | Icmp(_,_,op1,op2) | Store(_,op1,op2) -> get_list [op1;op2]
-    | Load (_,op) | Bitcast (_,op,_) -> get_list [op]
-    | Call(_,op,ops) -> get_list (op::(List.map(snd) ops))
-    | Gep(_,op,ops) -> get_list (op::ops)
-    | _ -> []
-  end
-in
-
-let create_graph():graph =
-  let rec add_uids(g:graph) (uids:uid list) :graph =
-    begin match uids with
-      | uid::tail -> add_uids (UidM.add uid UidS.empty g) tail
-      | [] -> g
-    end
-  in
-  let rec get_uids () :uid list =
-
-    let helper k block uids =
-      let uids_assign = List.append uids (List.map(fun (uid,ins) -> uid) block.insns) in
-      let uids_term = (fst block.term) :: uids_assign in
-      let uids_term2 = begin match get_term (snd block.term) with
-        | None -> uids_term
-        | Some id -> id ::uids_term
-      end in
-      let res = List.append uids_term2 (List.flatten (List.map (fun (uid, ins) -> get_ins ins) block.insns)) in
-      res
-    in
-
-    let blocks =(of_ast f).blocks in
-    LblM.fold helper blocks []
-  in
-
-  let g1 = UidM.empty in
-  let g2 = add_uids g1 f.f_param in
-  add_uids g2 (get_uids())
-in *)
