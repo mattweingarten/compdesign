@@ -812,7 +812,7 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
     fst @@ try UidM.find_first (fun k -> (UidM.mem k c) = false ) g with
            Not_found -> failwith "Coudlnt find uncolored node"
   in *)
-
+  (*TODO choose better node to spill*)
   let find_spill_node (g:graph): uid =
     try fst @@ UidM.find_first(fun k -> UidS.cardinal (UidM.find k g) >= n) g with
     Not_found -> failwith "trying to spill when not necessary"
@@ -824,6 +824,7 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
               UidS.filter(fun elt -> elt != uid) set
             ) g0
   in
+
 
   let color_spill (c:colors) (uid:uid) :colors =
       UidM.add uid (-1) c
@@ -886,6 +887,7 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
           else (x, Alloc.LVoid)::lo)
         (fun lo _ -> lo)
         [] f in
+    (*TODO precolor args to correct registers*)
     { uid_loc = (fun x -> try List.assoc x lo with Not_found -> failwith ("No location assignment for this uid" ^ x))
     ; spill_bytes = 8 * !n_spill
     }
