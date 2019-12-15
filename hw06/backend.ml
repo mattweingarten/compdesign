@@ -739,6 +739,12 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
 
 
 
+let n_arg = ref 0 in
+
+let arg_to_color (arg:int ref) :int =
+  incr arg;
+  if(!arg <= 8) then !arg else -1
+in
 let pal = LocSet.(caller_save
                   |> remove (Alloc.LReg Rax)
                   |> remove (Alloc.LReg Rcx)
@@ -754,7 +760,14 @@ let uids = LblM.fold(fun k d acc ->
                         List.append uids acc
                       ) cfg.blocks [] in
 
-let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids in
+let colors0 = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids in
+let colors =
+      fold_fdecl
+        (fun colors (x, _) -> UidM.add x (arg_to_color n_arg) colors)
+        (fun colors l -> colors)
+        (fun colors (x, i) -> colors)
+        (fun colors _ -> colors)
+        colors0 f in
   let create_graph() :graph  =
     let set = List.fold_left (fun acc uid -> UidS.union acc (live uid))  UidS.empty uids in
     let g = UidS.fold( fun elt acc -> UidM.add elt UidS.empty acc) set UidM.empty in
@@ -802,21 +815,72 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
   let remove_node ((g,c):(graph * colors)) (uid:uid) :graph* colors =
     (UidM.remove uid g), c
   in
-  (* let colored (g:graph) (c:colors) :bool =
+  let colored (g:graph) (c:colors) :bool =
     let uncolored_nodes = UidM.fold(fun k elt acc ->
                                     if (UidM.mem k c) then acc
                                     else acc + 1 ) g 0 in
    uncolored_nodes <= 1
-  in *)
+  in
   (* let find_uncolored (g:graph) (c:colors) :uid =
     fst @@ try UidM.find_first (fun k -> (UidM.mem k c) = false ) g with
            Not_found -> failwith "Coudlnt find uncolored node"
   in *)
+
+
+  let spill_value (g:graph) (uid:uid):int =
+    (* let in_loop(): bool =
+    fold_fdecl
+      (fun b (_, _) -> false || b)
+      (fun b _ -> false || b)
+      (fun b (x, i) -> false || b )
+      (fun b _ -> false || b)
+      false f
+    in *)
+    let get_ops_from_ins (ins:Ll.insn) :Ll.operand list =
+      begin match ins with
+        | Binop (_,_, op1,op2) | Store (_,op1,op2) | Icmp(_,_, op1,op2) -> [op1;op2]
+        | Load (_,op)| Bitcast(_,op,_) -> [op]
+        | Call (_,op,ops_t) -> op::(List.map(fun i -> snd i) ops_t)
+        | Gep (_, op,ops) -> op::ops
+        | _ -> []
+      end
+    in
+    let count_ins (ins: Ll.insn): int =
+      List.fold_left(fun acc op ->
+          begin match op with
+            | Null | Const _ -> acc
+            | Id id | Gid id -> if (id = uid) then acc + 1 else acc
+          end
+          ) 0 (get_ops_from_ins ins)
+    in
+    let degree = UidS.cardinal (try UidM.find uid g with Not_found ->
+                      failwith ("Didnt find " ^ uid ^
+                      " in graph when looking for ideal spill node.")) in
+
+    let count_times_called =
+      fold_fdecl
+        (fun acc (_, _) -> acc)
+        (fun acc _ -> acc)
+        (fun acc (x, i) -> count_ins i )
+        (fun acc _ -> acc)
+        0 f in
+    degree
+  in
+
+
   (*TODO choose better node to spill*)
   let find_spill_node (g:graph): uid =
-    try fst @@ UidM.find_first(fun k -> UidS.cardinal (UidM.find k g) >= n) g with
-    Not_found -> failwith "trying to spill when not necessary"
+    let first_uid =
+      try fst @@ UidM.find_first(fun k -> UidS.cardinal (UidM.find k g) >= n) g
+      with Not_found -> failwith "trying to spill when not necessary" in
+    let best_uid = UidM.fold (fun key value acc ->
+                if((spill_value g key) > (spill_value g acc)) then key else acc
+              ) g first_uid in
+    Printf.printf "\n Here is spill value of best uid(spilled) %s: %d\n"  best_uid (spill_value g best_uid);
+    best_uid
   in
+
+
 
   let remove_node_and_edges (g:graph) (uid:uid) :graph =
     let g0 = UidM.remove uid g in
@@ -840,6 +904,7 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
   in
   let rec color_graph ((g,c):(graph * colors))   :graph * colors =
     if (UidM.is_empty g ) then (g,c) else
+    (* if (colored g c) then (g,c) else *)
 
     if ((pick_node g) = None) then
               let s = find_spill_node g in
@@ -853,11 +918,6 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
   in
 
 
-  (* let caller_save : LocSet.t =
-    [ Rdi; Rsi; Rdx; Rcx; R09; R08; Rax; R10; R11 ]
-    |> List.map (fun r -> Alloc.LReg r) |> LocSet.of_list *)
-
-
   let create_layout (c:colors) :layout  =
     let n_spill = ref 0 in
     let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
@@ -868,24 +928,26 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
         | 1 -> Alloc.LReg (Rdi)
         | 2 -> Alloc.LReg (Rsi)
         | 3 -> Alloc.LReg (Rdx)
-        | 4 -> Alloc.LReg (R09)
+        | 4 -> Alloc.LReg (Rcx)
         | 5 -> Alloc.LReg (R08)
-        | 6 -> Alloc.LReg (R10)
-        | 7 -> Alloc.LReg (R11)
+        | 6 -> Alloc.LReg (R09)
+        | 7 -> Alloc.LReg (R10)
+        | 8 -> Alloc.LReg (R11)
         | _ -> failwith "Graph coloring algorithm assigned more colors then we have registers"
       end
     in
     let uid_ass = List.map(fun(uid,col) -> (uid,(col_to_loc col))) (UidM.bindings c) in
-    let fun_uid_ass x = List.assoc x uid_ass in
+    let fun_uid_ass x = try List.assoc x uid_ass with
+    Not_found -> failwith ("Trying to map uid to location that isnt in colors") in
     let lo =
       fold_fdecl
-        (fun lo (x, _) -> (x, fun_uid_ass x)::lo)
-        (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
-        (fun lo (x, i) ->
+        (fun lo (x, _) -> (x, fun_uid_ass x)::lo) (*This is for function param*)
+        (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo) (*This is for lablels*)
+        (fun lo (x, i) -> (*This is for insns*)
           if insn_assigns i
           then (x, fun_uid_ass x)::lo
           else (x, Alloc.LVoid)::lo)
-        (fun lo _ -> lo)
+        (fun lo _ -> lo)  (*term?*)
         [] f in
     (*TODO precolor args to correct registers*)
     { uid_loc = (fun x -> try List.assoc x lo with Not_found -> failwith ("No location assignment for this uid" ^ x))
@@ -897,10 +959,15 @@ let colors = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids i
   let g1 = create_graph() in
   let g = add_edges_to_graph(g1) in
   let g_after_color,final_colors = color_graph (g, colors) in
+
+  Printf.printf "\nGRAPH REGALLOC\n---------------\n%s\n" (graph_to_string g);
+  Printf.printf "\nGRAPH AFTER SPILL\n---------------\n%s\n" (graph_to_string g_after_color);
+  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors);
+
+  (* let random_uid = fst @@ UidM.find_first(fun k -> true) g in
+  Printf.printf "\nSpill value of uid %s: %d\n" random_uid (spill_value g random_uid); *)
   let lo = create_layout final_colors in
-  (* Printf.printf "\nGRAPH REGALLOC\n---------------\n%s\n" (graph_to_string g);
-  Printf.printf "\nGRAPH AFTER COLOR\n---------------\n%s\n" (graph_to_string g_after_color);
-  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors); *)
+
   lo
 
 
