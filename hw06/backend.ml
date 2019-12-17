@@ -804,8 +804,19 @@ let colors =
 
 
   let pick_node (g:graph) :(uid * UidS.t) option =
+    (* let first = try UidM.find_first_opt (fun k -> (UidS.cardinal (UidM.find k g)) > n) g with Not_found -> None in
+    begin match first with
+      | None -> None
+      | Some x ->
+        let b =  UidM.fold(fun k elt curr ->
+                            (* && ((UidS.cardinal elt) > 0) *)
+                            let repl = ((UidS.cardinal elt) > (UidS.cardinal curr)) in
+                            if repl then elt else curr
+                          ) g (snd x) in
+      Some (fst x , b)
+    end *)
     try UidM.find_first_opt(fun k -> (UidS.cardinal (UidM.find k g)) < n) g with
-    Not_found -> None
+     Not_found -> None
   in
 
 
@@ -820,6 +831,25 @@ let colors =
                                     if (UidM.mem k c) then acc
                                     else acc + 1 ) g 0 in
    uncolored_nodes <= 1
+  in
+
+  let remove_node_and_edges (g:graph) (uid:uid) :graph =
+    let g0 = UidM.remove uid g in
+    UidM.map(fun set ->
+              UidS.filter(fun elt -> elt != uid) set
+            ) g0
+  in
+
+  let remove_node_with_edges ((g,c):(graph * colors)) (uid:uid) :graph* colors =
+    let g0 = UidM.remove uid g in
+    UidM.map(fun set ->
+              UidS.filter(fun elt -> elt != uid) set
+            ) g0 ,c
+  in
+
+  let add_node_and_edges ((g,c):(graph * colors)) ((uid,edges):(uid * UidS.t)):graph* colors  =
+    let g0 = UidM.add uid edges g in
+    UidM.mapi(fun k set  -> if (UidS.mem k edges) then UidS.add uid set else set) g0 ,c
   in
   (* let find_uncolored (g:graph) (c:colors) :uid =
     fst @@ try UidM.find_first (fun k -> (UidM.mem k c) = false ) g with
@@ -873,33 +903,47 @@ let colors =
     let first_uid =
       try fst @@ UidM.find_first(fun k -> UidS.cardinal (UidM.find k g) >= n) g
       with Not_found -> failwith "trying to spill when not necessary" in
+
     let best_uid = UidM.fold (fun key value acc ->
                 if((spill_value g key) > (spill_value g acc)) then key else acc
               ) g first_uid in
-    Printf.printf "\n Here is spill value of best uid(spilled) %s: %d\n"  best_uid (spill_value g best_uid);
+    (* Printf.printf "\n Here is spill value of best uid(spilled) %s: %d\n"  best_uid (spill_value g best_uid); *)
     best_uid
   in
 
 
-
-  let remove_node_and_edges (g:graph) (uid:uid) :graph =
-    let g0 = UidM.remove uid g in
-    UidM.map(fun set ->
-              UidS.filter(fun elt -> elt != uid) set
-            ) g0
-  in
 
 
   let color_spill (c:colors) (uid:uid) :colors =
       UidM.add uid (-1) c
   in
 
+  let card_color (c:colors) (col:int) :int =
+    UidM.fold(fun key elt acc -> if elt = col then acc + 1 else acc) c 0
+  in
 
-  let add_color ((g,c):(graph * colors)) (uid:uid) :graph * colors =
+
+  let choose_color1 (g:graph)(c:colors) (uid:uid) :int =
     let nb = try  UidM.find uid g with Not_found -> failwith "This shouldnt happen (finding node i just added)" in
     let av_col = List.init n (fun x -> x + 1) in
-    let new_c = try List.find(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) av_col
-                with Not_found -> failwith "coudlnt find a color to fill in" in
+    try List.find(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) av_col
+              with Not_found -> failwith "coudlnt find a color to fill in"
+  in
+
+  let choose_color (g:graph)(c:colors) (uid:uid) :int =
+    let nb = try  UidM.find uid g with Not_found -> failwith "This shouldnt happen (finding node i just added)" in
+    let all_col = List.init n (fun x -> x + 1) in
+    let av_col = List.filter(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) all_col in
+    let first = try List.hd av_col with Failure _ -> failwith "Couldnt find a color to fill in" in
+    List.fold_left (fun curr col ->
+                      let repl = (card_color c col) > (card_color c curr) in
+                      if repl then col else curr
+                   ) first av_col
+  in
+
+  let add_color ((g,c):(graph * colors)) (uid:uid) :graph * colors =
+
+    let new_c = choose_color g c uid in
     (g, (UidM.add uid new_c c))
   in
   let rec color_graph ((g,c):(graph * colors))   :graph * colors =
@@ -914,7 +958,8 @@ let colors =
     else
               let (name,edges) = begin match (pick_node g) with | Some x -> x
               | None -> failwith "failed to catch a spill" end in
-              add_color (add_node (color_graph((remove_node (g,c) name))) (name,edges)) name
+              add_color (add_node_and_edges (color_graph((remove_node_with_edges (g,c) name))) (name,edges)) name
+              (* add_color (add_node (color_graph((remove_node (g,c) name))) (name,edges)) name *)
   in
 
 
@@ -959,10 +1004,10 @@ let colors =
   let g1 = create_graph() in
   let g = add_edges_to_graph(g1) in
   let g_after_color,final_colors = color_graph (g, colors) in
-
+(* 
   Printf.printf "\nGRAPH REGALLOC\n---------------\n%s\n" (graph_to_string g);
   Printf.printf "\nGRAPH AFTER SPILL\n---------------\n%s\n" (graph_to_string g_after_color);
-  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors);
+  Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors); *)
 
   (* let random_uid = fst @@ UidM.find_first(fun k -> true) g in
   Printf.printf "\nSpill value of uid %s: %d\n" random_uid (spill_value g random_uid); *)
