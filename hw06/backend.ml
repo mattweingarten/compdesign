@@ -761,7 +761,7 @@ let uids = LblM.fold(fun k d acc ->
                       ) cfg.blocks [] in
 
 let colors0 = List.fold_left(fun map uid -> UidM.add uid 0 map) UidM.empty uids in
-let colors =
+let colors1 =
       fold_fdecl
         (fun colors (x, _) -> UidM.add x (arg_to_color n_arg) colors)
         (fun colors l -> colors)
@@ -799,7 +799,7 @@ let colors =
   in
 
   let colors_to_string (c:colors) :string =
-    UidM.fold(fun k color acc -> k ^ ": " ^ (string_of_int color)^ "\n" ^ acc ^ "\n") c ""
+    UidM.fold(fun k color acc -> k ^ ": " ^ (string_of_int color)^ "\n" ^ acc ) c ""
   in
 
 
@@ -857,6 +857,35 @@ let colors =
   in *)
 
 
+  let color_spill (c:colors) (uid:uid) :colors =
+      UidM.add uid (-1) c
+  in
+
+  let card_color (c:colors) (col:int) :int =
+    UidM.fold(fun key elt acc -> if elt = col then acc + 1 else acc) c 0
+  in
+
+
+
+  let choose_color1 (g:graph)(c:colors) (uid:uid) :int =
+    let nb = try  UidM.find uid g with Not_found -> failwith "This shouldnt happen (finding node i just added)" in
+    let av_col = List.init n (fun x -> x + 1) in
+    try List.find(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) av_col
+              with Not_found -> failwith "coudlnt find a color to fill in"
+  in
+
+  let choose_color (g:graph)(c:colors) (uid:uid) :int =
+    let nb = try  UidM.find uid g with Not_found -> failwith "This shouldnt happen (finding node i just added)" in
+    let all_col = List.init n (fun x -> x + 1) in
+    let av_col = List.filter(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) all_col in
+    let first = try List.hd av_col with Failure x -> raise Not_found in
+    List.fold_left (fun curr col ->
+                      let repl = (card_color c col) > (card_color c curr) in
+                      if repl then col else curr
+                   ) first av_col
+  in
+
+
   let spill_value (g:graph) (uid:uid):int =
     (* let in_loop(): bool =
     fold_fdecl
@@ -894,7 +923,7 @@ let colors =
         (fun acc (x, i) -> count_ins i )
         (fun acc _ -> acc)
         0 f in
-    degree
+    degree -  5 * count_times_called
   in
 
 
@@ -914,32 +943,44 @@ let colors =
 
 
 
-  let color_spill (c:colors) (uid:uid) :colors =
-      UidM.add uid (-1) c
-  in
-
-  let card_color (c:colors) (col:int) :int =
-    UidM.fold(fun key elt acc -> if elt = col then acc + 1 else acc) c 0
-  in
 
 
-  let choose_color1 (g:graph)(c:colors) (uid:uid) :int =
-    let nb = try  UidM.find uid g with Not_found -> failwith "This shouldnt happen (finding node i just added)" in
-    let av_col = List.init n (fun x -> x + 1) in
-    try List.find(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) av_col
-              with Not_found -> failwith "coudlnt find a color to fill in"
+  let coalesce ((g,c):(graph * colors)) (uid1:uid) (uid2:uid):(graph * colors)  =
+    (* Printf.printf ("Here is graph right before a coalescing of %s and  %s \n%s\n") uid1  uid2 (graph_to_string g); *)
+    let set1 = try UidM.find uid1 g with Not_found -> UidS.empty in
+      (* failwith ("Failure in coalesce, coudlnt coalesce uids: " ^ uid1 ^ " " ^ uid2)   in *)
+    let set2 = try UidM.find uid2 g with Not_found -> UidS.empty in
+      (* failwith ("Failure in coalesce, coudlnt coalesce uids: " ^ uid1 ^ " " ^ uid2) in *)
+    if ((UidS.is_empty set1) && (UidS.is_empty set2)) then (g,c) else
+        let new_set = UidS.union set1 set2 in
+        let g0 = remove_node_and_edges g uid2 in
+        let g1 = fst @@  add_node_and_edges(g0,c) (uid1, new_set) in
+        let existing_col = try UidM.find uid1 c with Not_found -> -1 in
+        let col = if (existing_col <= 0) then  choose_color g1 c uid1  else existing_col in
+        let c1 = UidM.add uid2 col (UidM.add uid1 col c) in
+        (* Printf.printf ("Here is graph and color right before a coalescing of %s and  %s
+         ---------------------------------------------------------- \n%s
+         ----------------------------------------------------------- \n%s\n") uid1  uid2 (graph_to_string g1) (colors_to_string c1); *)
+        (g1,c1)
+
   in
 
-  let choose_color (g:graph)(c:colors) (uid:uid) :int =
-    let nb = try  UidM.find uid g with Not_found -> failwith "This shouldnt happen (finding node i just added)" in
-    let all_col = List.init n (fun x -> x + 1) in
-    let av_col = List.filter(fun col -> UidS.for_all(fun elt -> (try UidM.find elt c with Not_found -> 0) != col) nb ) all_col in
-    let first = try List.hd av_col with Failure _ -> failwith "Couldnt find a color to fill in" in
-    List.fold_left (fun curr col ->
-                      let repl = (card_color c col) > (card_color c curr) in
-                      if repl then col else curr
-                   ) first av_col
+  let  brigg_coalesce ((g,c):(graph * colors)) :(graph * colors) =
+    if (UidM.cardinal g  < 2 ) then (g,c) else
+    UidM.fold(fun k1 elt1 (g1,c1) ->
+                UidM.fold( fun k2 elt2 (g2,c2) ->
+                             if k1 = k2 then (g2,c2) else
+                              let not_nb = (UidS.mem k1 elt2) = false in
+                              let coalesable = UidS.cardinal (UidS.union elt1 elt2) <= n in
+                              if not_nb && coalesable then coalesce (g2,c2) k1 k2 else
+                              (g2,c2)
+                         ) g1 (g1,c1)
+             ) g (g,c)
   in
+
+
+
+
 
   let add_color ((g,c):(graph * colors)) (uid:uid) :graph * colors =
 
@@ -1002,13 +1043,21 @@ let colors =
 
 
   let g1 = create_graph() in
-  let g = add_edges_to_graph(g1) in
-  let g_after_color,final_colors = color_graph (g, colors) in
-(* 
-  Printf.printf "\nGRAPH REGALLOC\n---------------\n%s\n" (graph_to_string g);
-  Printf.printf "\nGRAPH AFTER SPILL\n---------------\n%s\n" (graph_to_string g_after_color);
+  let g2 = add_edges_to_graph(g1) in
+  let g,colors = brigg_coalesce (g2, colors1) in
+  (* let g_after_color,c_after_color = color_graph (g, colors) in *)
+  let final_colors = UidM.fold(fun k elt acc ->
+                                let new_col = try choose_color g acc k
+                                              with Not_found -> -1 in
+                                UidM.add k new_col acc
+                              ) g colors in
+
+  (* Printf.printf "\nGRAPH AFTER CREATION\n---------------\n%s\n" (graph_to_string g2);
+  Printf.printf "\nGRAPH AFTER COALESCING\n---------------\n%s\n" (graph_to_string g);
   Printf.printf "\nColor assignments\n-------------\n%s\n" (colors_to_string final_colors); *)
 
+
+  (* Printf.printf "\nGRAPH AFTER COLOR\n---------------\n%s\n" (graph_to_string g_after_color); *)
   (* let random_uid = fst @@ UidM.find_first(fun k -> true) g in
   Printf.printf "\nSpill value of uid %s: %d\n" random_uid (spill_value g random_uid); *)
   let lo = create_layout final_colors in
