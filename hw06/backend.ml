@@ -747,7 +747,6 @@ let arg_to_color (arg:int ref) :int =
 in
 let pal = LocSet.(caller_save
                   |> remove (Alloc.LReg Rax)
-                  |> remove (Alloc.LReg Rcx)
                  )
 in
 
@@ -862,7 +861,8 @@ let colors1 =
   in
 
   let card_color (c:colors) (col:int) :int =
-    UidM.fold(fun key elt acc -> if elt = col then acc + 1 else acc) c 0
+    if col = 4 then -1 else
+      UidM.fold(fun key elt acc -> if elt = col then acc + 1 else acc) c 0
   in
 
 
@@ -979,7 +979,33 @@ let colors1 =
   in
 
 
-
+  let rec full_coalesce((g,c):(graph * colors)) :(graph * colors) =
+    let term_cond = UidM.for_all(fun k elt ->
+                                    let col = try UidM.find k c
+                                    with  Not_found -> failwith ("Bug in full_coalesce, cant find uid: " ^ k) in
+                                    col > 0
+                                ) g in
+    if term_cond then (g,c) else
+    let g1,c0 = brigg_coalesce(g,c) in
+    let uncolored = UidM.fold(fun k elt acc ->
+                                      if (UidM.find k c0) > 0 then acc else
+                                      (k,elt)::acc
+                                  ) g1 [] in
+    let sorted_unc = List.sort(fun x y -> (UidS.cardinal (snd x)) - UidS.cardinal (snd y)) uncolored in
+    let c1 = List.fold_left(fun acc p ->
+                              let k = fst p in
+                              let elt = snd p in
+                              let new_col = try choose_color g1 acc k
+                                            with Not_found -> -1 in
+                              UidM.add k new_col acc
+                           ) c0 sorted_unc in
+    (* let c1 = UidM.fold(fun k elt acc ->
+                                  let new_col = try choose_color g1 acc k
+                                                with Not_found -> -1 in
+                                  UidM.add k new_col acc
+                                ) g1 c0 in *)
+    (g1,c1)
+  in
 
 
   let add_color ((g,c):(graph * colors)) (uid:uid) :graph * colors =
@@ -1033,9 +1059,8 @@ let colors1 =
           if insn_assigns i
           then (x, fun_uid_ass x)::lo
           else (x, Alloc.LVoid)::lo)
-        (fun lo _ -> lo)  (*term?*)
+        (fun lo _ -> lo) (*term*)
         [] f in
-    (*TODO precolor args to correct registers*)
     { uid_loc = (fun x -> try List.assoc x lo with Not_found -> failwith ("No location assignment for this uid" ^ x))
     ; spill_bytes = 8 * !n_spill
     }
@@ -1044,13 +1069,9 @@ let colors1 =
 
   let g1 = create_graph() in
   let g2 = add_edges_to_graph(g1) in
-  let g,colors = brigg_coalesce (g2, colors1) in
+  let g,final_colors = full_coalesce (g2, colors1) in
   (* let g_after_color,c_after_color = color_graph (g, colors) in *)
-  let final_colors = UidM.fold(fun k elt acc ->
-                                let new_col = try choose_color g acc k
-                                              with Not_found -> -1 in
-                                UidM.add k new_col acc
-                              ) g colors in
+
 
   (* Printf.printf "\nGRAPH AFTER CREATION\n---------------\n%s\n" (graph_to_string g2);
   Printf.printf "\nGRAPH AFTER COALESCING\n---------------\n%s\n" (graph_to_string g);
