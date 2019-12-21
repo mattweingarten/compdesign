@@ -1,0 +1,6 @@
+int program (int argc, string[] argv) {
+  var a = new int[3]{i -> 110};
+  var str = string_of_array (a);
+  print_string (str);
+  return 0;
+}

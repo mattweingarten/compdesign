@@ -28,7 +28,8 @@ Point square(Point p){
 }
 
 Triangle apply_function((Point) -> Point f, Triangle t){
-  var new_t = new Triangle { a = f(t.a); b = f(t.b); z = f(t.c)};
+
+  var new_t = new Triangle { a = f(t.a); b = f(t.b); c = f(t.c)};
   return new_t;
 }
 
@@ -56,7 +57,7 @@ int program(int argc, string[] argv) {
   var p2 = new Point { x = -1; y = 2};
   var p3 = new Point { x = -1; y = -1};
   var t = new Triangle{a=p1; b=p2; c=p3};
-  t  = shift(t,3,0);
+  t = shift(t,3,0);
   t = rotate_90(t);
   t = apply_function(square,t);
   return t.a.x;

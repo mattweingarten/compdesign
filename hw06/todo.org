@@ -1,0 +1,8 @@
+* TODO Liveness Analysis
+ - update stubbing
+ - update HTML documentation
+
+* TODO BACKEND Register Allocation
+ - figure out how to test register allocation
+ - create test cases
+ - stubbing for backend

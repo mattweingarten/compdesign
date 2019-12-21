@@ -14,8 +14,12 @@ test: main.native
 	./main.native --test
 
 .PHONY: main.native
-main.native: 
+main.native:
 	ocamlbuild -Is $(INCLUDES) -libs $(LIBS) main.native -use-menhir -yaccflag --explain
+
+.PHONY: debug
+debug:
+	ocamlbuild -ocamlc g -Is $(INCLUDES) -libs $(LIBS) main.native -use-menhir -yaccflag --explain
 
 zip: $(SUBMIT)
 	zip '$(ZIPNAME)' $(SUBMIT)
